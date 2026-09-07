@@ -286,40 +286,7 @@ with tab2:
 # ==========================================================
 with tab3:
     st.subheader("Admin Control: Faculty Availability Visibility")
-    st.caption("Manage faculty members who should never appear in the available/free list (e.g., Deans, Leadership, or Non-teaching staff).")
-
-    # Injected clean CSS styling for table borders
-    st.markdown("""
-    <style>
-        .roster-header {
-            border: 1px solid #cbd5e1;
-            border-bottom: 2px solid #94a3b8;
-            border-radius: 8px 8px 0 0;
-            background-color: #f1f5f9;
-            padding: 10px 16px;
-            font-weight: 700;
-            color: #0f172a;
-            font-size: 0.95rem;
-        }
-        .roster-row-even {
-            border-left: 1px solid #cbd5e1;
-            border-right: 1px solid #cbd5e1;
-            border-bottom: 1px solid #cbd5e1;
-            background-color: #ffffff;
-            padding: 4px 16px;
-        }
-        .roster-row-odd {
-            border-left: 1px solid #cbd5e1;
-            border-right: 1px solid #cbd5e1;
-            border-bottom: 1px solid #cbd5e1;
-            background-color: #f8fafc;
-            padding: 4px 16px;
-        }
-        .roster-last {
-            border-radius: 0 0 8px 8px;
-        }
-    </style>
-    """, unsafe_allow_html=True)
+    st.caption("Manage faculty members who should never appear in the available/free list.")
 
     password_attempt = st.text_input("Enter Admin Password to Unlock:", type="password")
 
@@ -330,41 +297,27 @@ with tab3:
             current_exclusions = set(get_excluded_faculty())
 
             st.write("### Faculty Visibility Roster")
-            st.caption("Check the box next to any faculty member you want to **exclude** from the Free list. Click **Save Changes** below when done.")
+            st.caption("Switch the toggle on to **exclude** a faculty member from the Free list.")
 
-            # Header
-            st.markdown("""
-            <div class="roster-header">
-                <div style="display: flex; justify-content: space-between;">
-                    <span style="flex: 3;">Faculty Name</span>
-                    <span style="flex: 1; text-align: right; padding-right: 12px;">Exclude from Free List</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+            # Column header
+            h1, h2 = st.columns([3, 1])
+            h1.markdown("**Faculty Name**")
+            h2.markdown("**Exclude Status**")
+            st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
 
             new_exclusions = []
-            total_fac = len(faculty_list)
 
-            # Rows
+            # Native bordered rows with toggles
             for idx, fac in enumerate(faculty_list):
-                row_cls = "roster-row-even" if idx % 2 == 0 else "roster-row-odd"
-                if idx == total_fac - 1:
-                    row_cls += " roster-last"
-
-                with st.container():
+                with st.container(border=True):
                     c1, c2 = st.columns([3, 1])
-                    c1.markdown(f"<div class='{row_cls}' style='border-right: none; height: 100%; display: flex; align-items: center; padding-top: 10px; font-weight: 600; color: #1e293b;'>{fac}</div>", unsafe_allow_html=True)
-                    
-                    with c2:
-                        st.markdown(f"<div class='{row_cls}' style='border-left: none; text-align: right; padding-top: 6px;'>", unsafe_allow_html=True)
-                        is_excluded = st.checkbox(
-                            "Exclude",
-                            value=(fac in current_exclusions),
-                            key=f"excl_{idx}",
-                            label_visibility="collapsed"
-                        )
-                        st.markdown("</div>", unsafe_allow_html=True)
-
+                    c1.markdown(f"**{fac}**")
+                    is_excluded = c2.toggle(
+                        label=f"Exclude {fac}",
+                        value=(fac in current_exclusions),
+                        key=f"toggle_excl_{idx}",
+                        label_visibility="collapsed"
+                    )
                     if is_excluded:
                         new_exclusions.append(fac)
 
