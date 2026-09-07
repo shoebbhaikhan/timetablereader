@@ -192,10 +192,26 @@ tab1, tab2 = st.tabs(["🔍 Faculty Availability by Date", "👤 Individual Facu
 # TAB 1: AVAILABILITY ENGINE
 # ==========================================================
 with tab1:
-    date_map = {c['label']: c['date'] for c in calendar_cols}
-    selected_label = st.selectbox("Select Academic Day:", options=list(date_map.keys()))
-    selected_date = date_map[selected_label]
+    # 1. Build date and week mapping
+    date_to_week = {c['date']: c['week'] for c in calendar_cols}
+    valid_dates = [c['date'] for c in calendar_cols]
+    min_date = valid_dates[0]
+    max_date = valid_dates[-1]
 
+    # Default to 07 Sep 2026 if within range, otherwise start date
+    default_date = datetime.date(2026, 9, 7) if min_date <= datetime.date(2026, 9, 7) <= max_date else min_date
+
+    # 2. Interactive Calendar Date Picker
+    selected_date = st.date_input(
+        "Select Academic Date:",
+        value=default_date,
+        min_value=min_date,
+        max_value=max_date
+    )
+
+    current_week = date_to_week.get(selected_date, "Non-Instructional / Holiday")
+
+    # 3. Calculate Availability
     busy_members = []
     free_members = []
 
@@ -206,11 +222,12 @@ with tab1:
         else:
             free_members.append(fac)
 
-    # Summary Metrics
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Date", selected_date.strftime('%d %B %Y'))
-    m2.metric("Available / Free", len(free_members))
-    m3.metric("Scheduled in Class", len(busy_members))
+    # 4. Metric Slots: Week, Date, Available, Scheduled
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Week", current_week)
+    m2.metric("Date", selected_date.strftime('%d %B %Y'))
+    m3.metric("Available / Free", len(free_members))
+    m4.metric("Scheduled in Class", len(busy_members))
 
     st.markdown("---")
     col_free, col_busy = st.columns([1, 1.2])
@@ -233,7 +250,7 @@ with tab1:
                 <b>{fac}</b> &nbsp; <span class="badge-busy">In Class</span><br>
                 <small style="color: #475569;">{details_html}</small>
             </div>
-            """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)     
 
 # ==========================================================
 # TAB 2: INDIVIDUAL LOOKUP
