@@ -591,7 +591,7 @@ with tab4:
             if extracted_rows:
                 df_auto = pd.DataFrame(extracted_rows)
                 st.success(f"Extracted {len(df_auto)} rows directly from the spreadsheet!")
-                st.dataframe(df_auto, use_container_width=True)
+                st.table(df_auto)
 
                 csv_auto = df_auto.to_csv(index=False).encode('utf-8')
                 st.download_button(
