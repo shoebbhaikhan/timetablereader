@@ -7,7 +7,7 @@ import re
 import json
 
 # --- ADMIN PASSWORD CONFIGURATION ---
-ADMIN_PASSWORD = "admin"  # Change this to your preferred password
+ADMIN_PASSWORD = "ArsenalFC"  # Change this to your preferred password
 EXCLUSION_FILE = "excluded_faculty.json"
 
 st.set_page_config(
@@ -288,6 +288,39 @@ with tab3:
     st.subheader("Admin Control: Faculty Availability Visibility")
     st.caption("Manage faculty members who should never appear in the available/free list (e.g., Deans, Leadership, or Non-teaching staff).")
 
+    # Injected clean CSS styling for table borders
+    st.markdown("""
+    <style>
+        .roster-header {
+            border: 1px solid #cbd5e1;
+            border-bottom: 2px solid #94a3b8;
+            border-radius: 8px 8px 0 0;
+            background-color: #f1f5f9;
+            padding: 10px 16px;
+            font-weight: 700;
+            color: #0f172a;
+            font-size: 0.95rem;
+        }
+        .roster-row-even {
+            border-left: 1px solid #cbd5e1;
+            border-right: 1px solid #cbd5e1;
+            border-bottom: 1px solid #cbd5e1;
+            background-color: #ffffff;
+            padding: 4px 16px;
+        }
+        .roster-row-odd {
+            border-left: 1px solid #cbd5e1;
+            border-right: 1px solid #cbd5e1;
+            border-bottom: 1px solid #cbd5e1;
+            background-color: #f8fafc;
+            padding: 4px 16px;
+        }
+        .roster-last {
+            border-radius: 0 0 8px 8px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
     password_attempt = st.text_input("Enter Admin Password to Unlock:", type="password")
 
     if password_attempt:
@@ -299,59 +332,38 @@ with tab3:
             st.write("### Faculty Visibility Roster")
             st.caption("Check the box next to any faculty member you want to **exclude** from the Free list. Click **Save Changes** below when done.")
 
-            # Table Header with full border and distinct background
+            # Header
             st.markdown("""
-            <div style="
-                border: 1px solid #cbd5e1;
-                border-bottom: 2px solid #94a3b8;
-                border-radius: 8px 8px 0 0;
-                background-color: #f1f5f9;
-                padding: 10px 16px;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                font-weight: 700;
-                color: #0f172a;
-                font-size: 0.95rem;
-            ">
-                <span style="flex: 3;">Faculty Name</span>
-                <span style="flex: 1; text-align: center;">Exclude from Free List</span>
+            <div class="roster-header">
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="flex: 3;">Faculty Name</span>
+                    <span style="flex: 1; text-align: right; padding-right: 12px;">Exclude from Free List</span>
+                </div>
             </div>
             """, unsafe_allow_html=True)
 
             new_exclusions = []
             total_fac = len(faculty_list)
 
-            # Table Rows with grid borders and alternating row shading
+            # Rows
             for idx, fac in enumerate(faculty_list):
-                is_last = (idx == total_fac - 1)
-                border_radius_css = "border-radius: 0 0 8px 8px;" if is_last else ""
-                bg_color = "#ffffff" if idx % 2 == 0 else "#f8fafc"
+                row_cls = "roster-row-even" if idx % 2 == 0 else "roster-row-odd"
+                if idx == total_fac - 1:
+                    row_cls += " roster-last"
 
                 with st.container():
-                    st.markdown(f"""
-                    <div style="
-                        border-left: 1px solid #cbd5e1;
-                        border-right: 1px solid #cbd5e1;
-                        border-bottom: 1px solid #cbd5e1;
-                        background-color: {bg_color};
-                        {border_radius_css}
-                        padding: 6px 16px;
-                        margin-bottom: 0px;
-                    ">
-                    """, unsafe_allow_html=True)
-
                     c1, c2 = st.columns([3, 1])
-                    c1.markdown(f"<div style='padding-top: 5px; font-weight: 600; color: #1e293b;'>{fac}</div>", unsafe_allow_html=True)
+                    c1.markdown(f"<div class='{row_cls}' style='border-right: none; height: 100%; display: flex; align-items: center; padding-top: 10px; font-weight: 600; color: #1e293b;'>{fac}</div>", unsafe_allow_html=True)
                     
-                    is_excluded = c2.checkbox(
-                        "Exclude",
-                        value=(fac in current_exclusions),
-                        key=f"excl_{idx}",
-                        label_visibility="collapsed"
-                    )
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
+                    with c2:
+                        st.markdown(f"<div class='{row_cls}' style='border-left: none; text-align: right; padding-top: 6px;'>", unsafe_allow_html=True)
+                        is_excluded = st.checkbox(
+                            "Exclude",
+                            value=(fac in current_exclusions),
+                            key=f"excl_{idx}",
+                            label_visibility="collapsed"
+                        )
+                        st.markdown("</div>", unsafe_allow_html=True)
 
                     if is_excluded:
                         new_exclusions.append(fac)
