@@ -294,42 +294,33 @@ with tab3:
         if password_attempt == ADMIN_PASSWORD:
             st.success("Admin authenticated.")
 
-            current_exclusions = get_excluded_faculty()
+            current_exclusions = set(get_excluded_faculty())
 
             st.write("### Faculty Visibility Roster")
-            st.caption("Toggle the status for each faculty member. Click **Save Changes** when done.")
+            st.caption("Check the box next to any faculty member you want to **exclude** from the Free list. Click **Save Changes** below when done.")
 
-            # Prepare editable DataFrame
-            status_data = []
-            for fac in faculty_list:
-                status_data.append({
-                    "Faculty Name": fac,
-                    "Exclude from Free List": True if fac in current_exclusions else False
-                })
+            # Table Header
+            h1, h2 = st.columns([3, 1])
+            h1.markdown("**Faculty Name**")
+            h2.markdown("**Exclude from Free List**")
+            st.markdown("<hr style='margin: 4px 0 12px 0;'>", unsafe_allow_html=True)
 
-            df_status = pd.DataFrame(status_data)
+            # Clean native HTML/Streamlit checkbox rows (No canvas blackout)
+            new_exclusions = []
+            for idx, fac in enumerate(faculty_list):
+                c1, c2 = st.columns([3, 1])
+                c1.markdown(f"<div style='padding-top: 6px; font-size: 0.95rem; color: #0f172a;'><b>{fac}</b></div>", unsafe_allow_html=True)
+                is_excluded = c2.checkbox(
+                    "Exclude",
+                    value=(fac in current_exclusions),
+                    key=f"excl_{idx}",
+                    label_visibility="collapsed"
+                )
+                if is_excluded:
+                    new_exclusions.append(fac)
 
-            # Editable data editor with direct checkbox toggles
-            edited_df = st.data_editor(
-                df_status,
-                column_config={
-                    "Faculty Name": st.column_config.TextColumn(
-                        "Faculty Name",
-                        disabled=True
-                    ),
-                    "Exclude from Free List": st.column_config.CheckboxColumn(
-                        "Exclude from Free List",
-                        help="Check this box to permanently hide them from the Free list."
-                    )
-                },
-                disabled=["Faculty Name"],
-                hide_index=True,
-                use_container_width=True
-            )
-
+            st.markdown("<br>", unsafe_allow_html=True)
             if st.button("Save Changes"):
-                # Filter checked faculty names
-                new_exclusions = edited_df[edited_df["Exclude from Free List"] == True]["Faculty Name"].tolist()
                 save_excluded_faculty(new_exclusions)
                 st.success("Roster visibility updated successfully!")
                 st.rerun()
