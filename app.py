@@ -1,18 +1,23 @@
 import streamlit as st
 import pandas as pd
+import openpyxl
 import datetime
 import os
+import re
 
-# --- PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="UID ID Timetable & Faculty Dispatch",
+    page_title="UID Industrial Design | Timetable",
     page_icon="📅",
     layout="wide"
 )
 
-# Custom Styling
+# Explicit light theme styling to prevent dark-mode blackouts
 st.markdown("""
 <style>
+    .reportview-container, .main, .block-container {
+        background-color: #ffffff;
+        color: #1e293b;
+    }
     .badge-free {
         background-color: #dcfce7;
         color: #15803d;
@@ -20,6 +25,8 @@ st.markdown("""
         border-radius: 6px;
         font-weight: 600;
         font-size: 0.85rem;
+        display: inline-block;
+        margin: 2px 0;
     }
     .badge-busy {
         background-color: #fee2e2;
@@ -28,195 +35,223 @@ st.markdown("""
         border-radius: 6px;
         font-weight: 600;
         font-size: 0.85rem;
+        display: inline-block;
+        margin: 2px 0;
+    }
+    .faculty-card {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 8px;
     }
 </style>
 """, unsafe_allow_html=True)
 
 
 @st.cache_data
-def load_data():
+def load_and_parse():
     files = [f for f in os.listdir('.') if f.endswith('.xlsx') and not f.startswith('~')]
     if not files:
-        st.error("No timetable `.xlsx` spreadsheet found in the repository root directory.")
+        st.error("No timetable `.xlsx` file found in the repository.")
         st.stop()
-
+    
     file_path = files[0]
-    xls = pd.ExcelFile(file_path)
-
-    # Prefer 'Dashboard' sheet for clean faculty-day mappings
-    sheet = 'Dashboard' if 'Dashboard' in xls.sheet_names else xls.sheet_names[0]
-    df = pd.read_excel(file_path, sheet_name=sheet, header=None)
-
-    # 1. Parse Calendar Date Columns (Row 1: Month, Row 2: Date, Row 3: Week)
-    months = df.iloc[1].ffill()
-    dates = df.iloc[2]
-    weeks = df.iloc[3].ffill()
+    wb = openpyxl.load_workbook(file_path, data_only=True)
+    
+    # 1. Load Master Faculty Roster
+    ws_roster = wb['Faculty Work Load ']
+    df_fw = pd.read_excel(file_path, sheet_name='Faculty Work Load ')
+    raw_faculties = df_fw['Faculty Name '].dropna().unique().tolist()
+    
+    faculty_list = []
+    first_name_to_full = {}
+    
+    for f in raw_faculties:
+        full = " ".join(str(f).split())
+        tokens = [t.lower().strip("().,") for t in full.split()]
+        tokens = [t for t in tokens if t not in ['dr', 'mr', 'ms', 'prof']]
+        if tokens:
+            fn = tokens[0]
+            first_name_to_full[fn] = full
+            faculty_list.append(full)
+            
+    faculty_list = sorted(list(set(faculty_list)))
+    
+    # 2. Parse Primary Day-by-Day Sheet (Morning_Afternoon Updated_Timet)
+    sheet_name = 'Morning_Afternoon Updated_Timet' if 'Morning_Afternoon Updated_Timet' in wb.sheetnames else wb.sheetnames[0]
+    ws = wb[sheet_name]
 
     month_map = {'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12}
-    calendar_days = []
+    calendar_cols = []
 
-    for col in range(2, df.shape[1]):
-        d_val = dates[col]
-        if pd.notna(d_val) and str(d_val).strip() not in ['', 'nan', 'Date']:
+    # Detect header columns (Row 3: Month, Row 4: Date, Row 5: Week)
+    for col in range(2, ws.max_column + 1):
+        m_val = ws.cell(3, col).value
+        d_val = ws.cell(4, col).value
+        w_val = ws.cell(5, col).value
+
+        if d_val is not None and str(d_val).strip() not in ['', 'None', 'Date']:
             try:
                 day_int = int(float(d_val))
-                m_str = str(months[col]).strip()
-                w_str = str(weeks[col]).strip()
-                month_int = month_map.get(m_str, 7)
-
-                date_obj = datetime.date(2026, month_int, day_int)
-                calendar_days.append({
-                    'col': col,
-                    'date': date_obj,
-                    'week': w_str,
-                    'label': f"{date_obj.strftime('%a, %d %b %Y')} ({w_str})"
-                })
+                m_str = str(m_val).strip()
+                if m_str in month_map:
+                    w_str = str(w_val).strip() if w_val else "Week"
+                    d_obj = datetime.date(2026, month_map[m_str], day_int)
+                    calendar_cols.append({
+                        'col': col,
+                        'date': d_obj,
+                        'week': w_str,
+                        'label': f"{d_obj.strftime('%a, %d %b %Y')} ({w_str})"
+                    })
             except Exception:
                 continue
 
-    # 2. Extract Faculty Roster
-    faculty_blocks = []
-    for r in range(5, df.shape[0]):
-        fac_name = df.iloc[r, 1]
-        if pd.notna(fac_name) and str(fac_name).strip() not in ['', 'nan', 'Month', 'Date', 'Week', 'No of Days']:
-            name_clean = " ".join(str(fac_name).strip().split())
-            faculty_blocks.append((r, name_clean))
+    # 3. Define Cohort Modules & Active Session Rows
+    teaching_rows = [
+        # UG-Sem 3
+        (14, 'UG-Sem 3', 'Sec A', 'Morning', 8),
+        (15, 'UG-Sem 3', 'Sec A', 'Afternoon', 8),
+        (16, 'UG-Sem 3', 'Sec B', 'Morning', 8),
+        (17, 'UG-Sem 3', 'Sec B', 'Afternoon', 8),
+        (18, 'UG-Sem 3', 'Sec C', 'Morning', 8),
+        (19, 'UG-Sem 3', 'Sec C', 'Afternoon', 8),
+        (20, 'UG-Sem 3', 'Sec D', 'Morning', 8),
+        (21, 'UG-Sem 3', 'Sec D', 'Afternoon', 8),
+        (22, 'UG-Sem 3', 'Sec E', 'Morning', 8),
+        (23, 'UG-Sem 3', 'Sec E', 'Afternoon', 8),
+        # UG-Sem 5
+        (33, 'UG-Sem 5', 'Sec A', 'Morning', 30),
+        (34, 'UG-Sem 5', 'Sec A', 'Afternoon', 30),
+        (35, 'UG-Sem 5', 'Sec B', 'Morning', 30),
+        (36, 'UG-Sem 5', 'Sec B', 'Afternoon', 30),
+        (37, 'UG-Sem 5', 'Sec C', 'Morning', 30),
+        (38, 'UG-Sem 5', 'Sec C', 'Afternoon', 30),
+        (39, 'UG-Sem 5', 'Sec D', 'Morning', 30),
+        (40, 'UG-Sem 5', 'Sec D', 'Afternoon', 30),
+        # UG-Sem 7
+        (51, 'UG-Sem 7', 'Sec A', 'Lead', 48),
+        (52, 'UG-Sem 7', 'Sec A', 'Assisting', 48),
+        (53, 'UG-Sem 7', 'Sec B', 'Lead', 48),
+        (54, 'UG-Sem 7', 'Sec B', 'Assisting', 48),
+        (55, 'UG-Sem 7', 'Sec C', 'Lead', 48),
+        (56, 'UG-Sem 7', 'Sec C', 'Assisting', 48),
+        # PG-Sem 1
+        (65, 'PG-Sem 1', 'Main', 'Full Day', 62),
+        (66, 'PG-Sem 1', 'Master Class', 'Session', 62),
+        # PG-Sem 3
+        (74, 'PG-Sem 3', 'Main', 'Full Day', 71),
+        (75, 'PG-Sem 3', 'Master Class', 'Session', 71),
+    ]
 
-    all_faculties = sorted(list(set([name for _, name in faculty_blocks])))
+    # Map daily schedules
+    faculty_day_schedule = {f: {} for f in faculty_list}
 
-    # 3. Build Schedule Dictionary: faculty -> { date: module_string }
-    faculty_schedule = {f: {} for f in all_faculties}
+    for c_info in calendar_cols:
+        col = c_info['col']
+        dt = c_info['date']
 
-    for i, (r_start, fac_name) in enumerate(faculty_blocks):
-        r_end = faculty_blocks[i + 1][0] if i + 1 < len(faculty_blocks) else min(r_start + 4, df.shape[0])
+        for r, cohort, sec, slot, mod_r in teaching_rows:
+            cell_val = ws.cell(r, col).value
+            if cell_val is not None and str(cell_val).strip() not in ['', 'None', '-']:
+                txt = str(cell_val).strip()
+                mod_name = str(ws.cell(mod_r, col).value or "Studio").strip()
+                
+                # Check for first-name match inside the cell
+                cell_tokens = [re.sub(r'[^a-zA-Z]', '', w).lower() for w in txt.split()]
+                matched_faculty = None
+                for tok in cell_tokens:
+                    if tok in first_name_to_full:
+                        matched_faculty = first_name_to_full[tok]
+                        break
 
-        for c_info in calendar_days:
-            col = c_info['col']
-            date_key = c_info['date']
-            modules_found = []
+                if matched_faculty:
+                    detail = f"{cohort} | {sec} ({slot}) - {mod_name}"
+                    if dt not in faculty_day_schedule[matched_faculty]:
+                        faculty_day_schedule[matched_faculty][dt] = []
+                    if detail not in faculty_day_schedule[matched_faculty][dt]:
+                        faculty_day_schedule[matched_faculty][dt].append(detail)
 
-            for sub_r in range(r_start, r_end):
-                val = str(df.iloc[sub_r, col]).strip()
-                if val and val not in ['nan', 'None', '-']:
-                    # Exclude standalone digit strings representing contact hours/days
-                    if not val.replace('.', '', 1).isdigit():
-                        clean_val = " ".join(val.split())
-                        if clean_val not in modules_found:
-                            modules_found.append(clean_val)
-
-            if modules_found:
-                faculty_schedule[fac_name][date_key] = ", ".join(modules_found)
-
-    return calendar_days, all_faculties, faculty_schedule
+    return calendar_cols, faculty_list, faculty_day_schedule
 
 
-# --- DATA LOAD ---
+# --- RUN DATA ENGINE ---
 try:
-    calendar_days, all_faculties, faculty_schedule = load_data()
+    calendar_cols, faculty_list, faculty_schedule = load_and_parse()
 except Exception as e:
-    st.error(f"Error parsing workbook: {e}")
+    st.error(f"Error initializing timetable engine: {e}")
     st.stop()
 
-# --- TOP HEADER ---
+# --- APP INTERFACE ---
 st.title("UID Department of Industrial Design")
-st.caption("Master Academic Timetable & Faculty Availability Dispatch")
+st.caption("Master Academic Schedule & Faculty Dispatch")
 
-tab_free, tab_personal, tab_matrix = st.tabs([
-    "🔍 Faculty Availability on a Date", 
-    "👤 Individual Faculty Timeline", 
-    "📊 Master Contact Matrix"
-])
+tab1, tab2 = st.tabs(["🔍 Faculty Availability by Date", "👤 Individual Faculty Schedule"])
 
 # ==========================================================
-# TAB 1: WHO IS FREE TODAY?
+# TAB 1: AVAILABILITY ENGINE
 # ==========================================================
-with tab_free:
-    st.subheader("Daily Availability Checker")
+with tab1:
+    date_map = {c['label']: c['date'] for c in calendar_cols}
+    selected_label = st.selectbox("Select Academic Day:", options=list(date_map.keys()))
+    selected_date = date_map[selected_label]
 
-    date_options = {c['label']: c['date'] for c in calendar_days}
-    selected_label = st.selectbox("Select Academic Day:", options=list(date_options.keys()))
-    selected_date = date_options[selected_label]
+    busy_members = []
+    free_members = []
 
-    free_faculty = []
-    busy_faculty = []
-
-    for fac in all_faculties:
-        assigned = faculty_schedule.get(fac, {}).get(selected_date, None)
-        if assigned:
-            busy_faculty.append({'Faculty': fac, 'Scheduled Module': assigned})
+    for fac in faculty_list:
+        classes = faculty_schedule.get(fac, {}).get(selected_date, [])
+        if classes:
+            busy_members.append((fac, classes))
         else:
-            free_faculty.append(fac)
+            free_members.append(fac)
 
-    # Metric summary row
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Selected Date", selected_date.strftime('%d %B %Y'))
-    c2.metric("Available / Free Faculty", len(free_faculty))
-    c3.metric("Scheduled / Busy Faculty", len(busy_faculty))
+    # Summary Metrics
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Date", selected_date.strftime('%d %B %Y'))
+    m2.metric("Available / Free", len(free_members))
+    m3.metric("Scheduled in Class", len(busy_members))
 
     st.markdown("---")
-    col_free, col_busy = st.columns([1, 1])
+    col_free, col_busy = st.columns([1, 1.2])
 
     with col_free:
-        st.markdown(f"#### ✅ Available Faculty ({len(free_faculty)})")
-        st.caption("Instructors with zero teaching modules on this date:")
-        if free_faculty:
-            f_col1, f_col2 = st.columns(2)
-            for idx, fac in enumerate(free_faculty):
-                target = f_col1 if idx % 2 == 0 else f_col2
-                target.markdown(f"• **{fac}** &nbsp; <span class='badge-free'>Free</span>", unsafe_allow_html=True)
-        else:
-            st.warning("All faculty members are scheduled today.")
+        st.subheader(f"✅ Free Faculty ({len(free_members)})")
+        st.caption("No studio or lecture commitments found on this date:")
+        f1, f2 = st.columns(2)
+        for idx, fac in enumerate(free_members):
+            target = f1 if idx % 2 == 0 else f2
+            target.markdown(f"• **{fac}** &nbsp; <span class='badge-free'>Available</span>", unsafe_allow_html=True)
 
     with col_busy:
-        st.markdown(f"#### 🔒 Scheduled Faculty ({len(busy_faculty)})")
-        st.caption("Instructors scheduled in studios/lectures:")
-        if busy_faculty:
-            df_busy = pd.DataFrame(busy_faculty)
-            st.dataframe(df_busy, use_container_width=True, hide_index=True)
-        else:
-            st.info("No teaching modules scheduled on this day.")
+        st.subheader(f"🔒 Scheduled Faculty ({len(busy_members)})")
+        st.caption("Instructors with active class assignments:")
+        for fac, sessions in busy_members:
+            details_html = "<br>".join([f"&nbsp;&nbsp;↳ {s}" for s in sessions])
+            st.markdown(f"""
+            <div class="faculty-card">
+                <b>{fac}</b> &nbsp; <span class="badge-busy">In Class</span><br>
+                <small style="color: #475569;">{details_html}</small>
+            </div>
+            """, unsafe_allow_html=True)
 
 # ==========================================================
-# TAB 2: INDIVIDUAL FACULTY TIMELINE
+# TAB 2: INDIVIDUAL LOOKUP
 # ==========================================================
-with tab_personal:
-    st.subheader("Individual Faculty Schedule")
-    selected_fac = st.selectbox("Select Faculty Member:", options=all_faculties)
+with tab2:
+    selected_fac = st.selectbox("Select Faculty Member:", options=faculty_list)
+    sched = faculty_schedule.get(selected_fac, {})
 
-    fac_days = faculty_schedule.get(selected_fac, {})
-    if fac_days:
-        timeline_list = []
-        for c in calendar_days:
-            mod = fac_days.get(c['date'], None)
-            if mod:
-                timeline_list.append({
+    if sched:
+        st.markdown(f"**Total Teaching Days:** `{len(sched)} days`")
+        records = []
+        for c in calendar_cols:
+            if c['date'] in sched:
+                records.append({
                     'Date': c['date'].strftime('%d-%b-%Y'),
                     'Week': c['week'],
-                    'Assigned Module': mod
+                    'Assigned Sessions': "; ".join(sched[c['date']])
                 })
-
-        df_fac = pd.DataFrame(timeline_list)
-        st.markdown(f"**Total Instructional Days Scheduled:** `{len(df_fac)} days`")
-        st.dataframe(df_fac, use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
     else:
-        st.info(f"No specific module timeline recorded for {selected_fac}.")
-
-# ==========================================================
-# TAB 3: MASTER SCHEDULE MATRIX
-# ==========================================================
-with tab_matrix:
-    st.subheader("Master Daily Matrix (Faculty vs Calendar Days)")
-    filter_week = st.selectbox(
-        "Filter by Academic Week:",
-        options=["All Weeks"] + sorted(list(set([c['week'] for c in calendar_days if c['week']])))
-    )
-
-    active_cols = calendar_days if filter_week == "All Weeks" else [c for c in calendar_days if c['week'] == filter_week]
-    matrix_data = {'Faculty': all_faculties}
-
-    for c in active_cols:
-        col_name = f"{c['date'].strftime('%d-%b')} ({c['week']})"
-        matrix_data[col_name] = [faculty_schedule.get(f, {}).get(c['date'], "-") for f in all_faculties]
-
-    df_matrix = pd.DataFrame(matrix_data)
-    st.dataframe(df_matrix, use_container_width=True, hide_index=True)
+        st.info(f"No active teaching assignments found for {selected_fac}.")
