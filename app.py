@@ -296,18 +296,42 @@ with tab3:
 
             current_exclusions = get_excluded_faculty()
 
-            st.write("### Faculty Visibility Toggles")
-            st.write("Select the faculty members to **exclude** from the Free list:")
+            st.write("### Faculty Visibility Roster")
+            st.caption("Toggle the status for each faculty member. Click **Save Changes** when done.")
 
-            new_exclusions = st.multiselect(
-                "Permanently Excluded Faculty:",
-                options=faculty_list,
-                default=[f for f in current_exclusions if f in faculty_list]
+            # Prepare editable DataFrame
+            status_data = []
+            for fac in faculty_list:
+                status_data.append({
+                    "Faculty Name": fac,
+                    "Exclude from Free List": True if fac in current_exclusions else False
+                })
+
+            df_status = pd.DataFrame(status_data)
+
+            # Editable data editor with direct checkbox toggles
+            edited_df = st.data_editor(
+                df_status,
+                column_config={
+                    "Faculty Name": st.column_config.TextColumn(
+                        "Faculty Name",
+                        disabled=True
+                    ),
+                    "Exclude from Free List": st.column_config.CheckboxColumn(
+                        "Exclude from Free List",
+                        help="Check this box to permanently hide them from the Free list."
+                    )
+                },
+                disabled=["Faculty Name"],
+                hide_index=True,
+                use_container_width=True
             )
 
             if st.button("Save Changes"):
+                # Filter checked faculty names
+                new_exclusions = edited_df[edited_df["Exclude from Free List"] == True]["Faculty Name"].tolist()
                 save_excluded_faculty(new_exclusions)
-                st.success("Preferences saved successfully!")
+                st.success("Roster visibility updated successfully!")
                 st.rerun()
         else:
             st.error("Incorrect password. Access denied.")
