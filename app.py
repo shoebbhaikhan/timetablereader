@@ -1,5 +1,124 @@
 import streamlit as st
 import pandas as pd
+import datetime
+import os
+
+st.set_page_config(page_title="UID ID Timetable", page_icon="📅", layout="wide")
+
+@st.cache_data
+def load_unmerged_data():
+    # Target unmerged timetable file
+    files = [f for f in os.listdir('.') if f.endswith('.xlsx') and not f.startswith('~')]
+    if not files:
+        st.error("No timetable spreadsheet found.")
+        st.stop()
+        
+    df = pd.read_excel(files[0], sheet_name='Dashboard', header=None)
+
+    # 1. Parse Calendar Header Rows
+    # Row 1: Months | Row 2: Dates | Row 3: Weeks
+    months = df.iloc[1].ffill()
+    dates = df.iloc[2]
+    weeks = df.iloc[3].ffill()
+    
+    month_map = {'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12}
+    calendar_days = []
+
+    for col in range(2, df.shape[1]):
+        d_val = dates[col]
+        if pd.notna(d_val) and str(d_val).strip() not in ['', 'nan', 'Date']:
+            try:
+                day_int = int(float(d_val))
+                m_str = str(months[col]).strip()
+                w_str = str(weeks[col]).strip()
+                d_obj = datetime.date(2026, month_map.get(m_str, 7), day_int)
+                calendar_days.append({
+                    'col': col,
+                    'date': d_obj,
+                    'week': w_str,
+                    'label': f"{d_obj.strftime('%a, %d %b %Y')} ({w_str})"
+                })
+            except Exception:
+                continue
+
+    # 2. Extract Faculty Roster & Direct Column Lookups
+    faculty_roster = []
+    faculty_rows = {}
+
+    for r in range(5, df.shape[0]):
+        fac_name = df.iloc[r, 1]
+        if pd.notna(fac_name) and str(fac_name).strip() not in ['', 'nan', 'Month', 'Date', 'Week', 'No of Days']:
+            name_clean = str(fac_name).strip()
+            faculty_roster.append(name_clean)
+            faculty_rows[name_clean] = r
+
+    # 3. Direct Matrix Population (No unmerging algorithms needed)
+    faculty_schedule = {f: {} for f in faculty_roster}
+
+    for fac, r_idx in faculty_rows.items():
+        # Check faculty row and the 2 descriptor rows beneath it
+        for c_info in calendar_days:
+            col = c_info['col']
+            entries = []
+            for sub_r in range(r_idx, min(r_idx + 4, df.shape[0])):
+                val = str(df.iloc[sub_r, col]).strip()
+                if val and val not in ['nan', 'None', '-'] and not val.replace('.', '', 1).isdigit():
+                    if val not in entries:
+                        entries.append(" ".join(val.split()))
+            
+            if entries:
+                faculty_schedule[fac][c_info['date']] = ", ".join(entries)
+
+    return calendar_days, sorted(list(set(faculty_roster))), faculty_schedule
+
+
+calendar_days, faculties, schedule = load_unmerged_data()
+
+st.title("UID Industrial Design — Faculty Dispatch")
+tab_free, tab_all = st.tabs(["🔍 Faculty Availability", "📊 Master Timetable View"])
+
+with tab_free:
+    date_map = {c['label']: c['date'] for c in calendar_days}
+    selected_label = st.selectbox("Select Date:", list(date_map.keys()))
+    target_date = date_map[selected_label]
+
+    free_list = []
+    busy_list = []
+
+    for f in faculties:
+        assigned = schedule[f].get(target_date)
+        if assigned:
+            busy_list.append({"Faculty": f, "Assigned Module": assigned})
+        else:
+            free_list.append(f)
+
+    c1, c2 = st.columns(2)
+    c1.metric("Available / Free", len(free_list))
+    c2.metric("Scheduled / Busy", len(busy_list))
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.subheader("Available Faculty")
+        for faculty in free_list:
+            st.success(faculty)
+
+    with col_b:
+        st.subheader("Busy Faculty")
+        if busy_list:
+            st.dataframe(pd.DataFrame(busy_list), use_container_width=True, hide_index=True)
+        else:
+            st.info("No sessions scheduled.")
+
+with tab_all:
+    st.subheader("Master Allocation Matrix")
+    matrix_records = []
+    for f in faculties:
+        row = {"Faculty": f}
+        for c in calendar_days:
+            row[c['date'].strftime('%d-%b')] = schedule[f].get(c['date'], "-")
+        matrix_records.append(row)
+    st.dataframe(pd.DataFrame(matrix_records), use_container_width=True, hide_index=True)import streamlit as st
+import pandas as pd
 import openpyxl
 import datetime
 
