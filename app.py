@@ -252,6 +252,9 @@ with tab2:
                     'Week': c['week'],
                     'Assigned Sessions': "; ".join(sched[c['date']])
                 })
-        st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
+        
+        # Converted to native HTML table to prevent canvas blackout
+        df_display = pd.DataFrame(records)
+        st.table(df_display)
     else:
         st.info(f"No active teaching assignments found for {selected_fac}.")
