@@ -299,28 +299,65 @@ with tab3:
             st.write("### Faculty Visibility Roster")
             st.caption("Check the box next to any faculty member you want to **exclude** from the Free list. Click **Save Changes** below when done.")
 
-            # Table Header
-            h1, h2 = st.columns([3, 1])
-            h1.markdown("**Faculty Name**")
-            h2.markdown("**Exclude from Free List**")
-            st.markdown("<hr style='margin: 4px 0 12px 0;'>", unsafe_allow_html=True)
+            # Table Header with full border and distinct background
+            st.markdown("""
+            <div style="
+                border: 1px solid #cbd5e1;
+                border-bottom: 2px solid #94a3b8;
+                border-radius: 8px 8px 0 0;
+                background-color: #f1f5f9;
+                padding: 10px 16px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-weight: 700;
+                color: #0f172a;
+                font-size: 0.95rem;
+            ">
+                <span style="flex: 3;">Faculty Name</span>
+                <span style="flex: 1; text-align: center;">Exclude from Free List</span>
+            </div>
+            """, unsafe_allow_html=True)
 
-            # Clean native HTML/Streamlit checkbox rows (No canvas blackout)
             new_exclusions = []
+            total_fac = len(faculty_list)
+
+            # Table Rows with grid borders and alternating row shading
             for idx, fac in enumerate(faculty_list):
-                c1, c2 = st.columns([3, 1])
-                c1.markdown(f"<div style='padding-top: 6px; font-size: 0.95rem; color: #0f172a;'><b>{fac}</b></div>", unsafe_allow_html=True)
-                is_excluded = c2.checkbox(
-                    "Exclude",
-                    value=(fac in current_exclusions),
-                    key=f"excl_{idx}",
-                    label_visibility="collapsed"
-                )
-                if is_excluded:
-                    new_exclusions.append(fac)
+                is_last = (idx == total_fac - 1)
+                border_radius_css = "border-radius: 0 0 8px 8px;" if is_last else ""
+                bg_color = "#ffffff" if idx % 2 == 0 else "#f8fafc"
+
+                with st.container():
+                    st.markdown(f"""
+                    <div style="
+                        border-left: 1px solid #cbd5e1;
+                        border-right: 1px solid #cbd5e1;
+                        border-bottom: 1px solid #cbd5e1;
+                        background-color: {bg_color};
+                        {border_radius_css}
+                        padding: 6px 16px;
+                        margin-bottom: 0px;
+                    ">
+                    """, unsafe_allow_html=True)
+
+                    c1, c2 = st.columns([3, 1])
+                    c1.markdown(f"<div style='padding-top: 5px; font-weight: 600; color: #1e293b;'>{fac}</div>", unsafe_allow_html=True)
+                    
+                    is_excluded = c2.checkbox(
+                        "Exclude",
+                        value=(fac in current_exclusions),
+                        key=f"excl_{idx}",
+                        label_visibility="collapsed"
+                    )
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+                    if is_excluded:
+                        new_exclusions.append(fac)
 
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Save Changes"):
+            if st.button("Save Changes", type="primary"):
                 save_excluded_faculty(new_exclusions)
                 st.success("Roster visibility updated successfully!")
                 st.rerun()
