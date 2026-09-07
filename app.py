@@ -7,7 +7,7 @@ import re
 import json
 
 # --- CONFIGURATION & SECURITY ---
-ADMIN_PASSWORD = "admin"  # Change to your desired admin password
+ADMIN_PASSWORD = "ArsenalFC"  # Change to your desired admin password
 EXCLUSION_FILE = "excluded_faculty.json"
 
 st.set_page_config(
@@ -103,6 +103,7 @@ COURSES_DATA = [
     {"code": "31305006325", "title": "Experience Design", "sem": "V", "prog_code": "1019", "batch": "5th Sem B.Des PD 2024-28"},
     {"code": "31305006326", "title": "Packaging Design", "sem": "V", "prog_code": "1019", "batch": "5th Sem B.Des PD 2024-28"},
     {"code": "31305006327", "title": "Speculative design", "sem": "V", "prog_code": "1019", "batch": "5th Sem B.Des PD 2024-28"},
+    {"code": "31305006329", "title": "Portfolio with AI", "sem": "V", "prog_code": "1019", "batch": "5th Sem B.Des PD 2024-28"},
     
     # 7th Sem B.Design Product Design Batch 2023-27
     {"code": "31407001400", "title": "Design Management", "sem": "VII", "prog_code": "1019", "batch": "7th Sem B.Des PD 2023-27"},
@@ -327,22 +328,29 @@ def load_master_data():
                         faculty_code = first_name_to_code.get(tok, "")
                         break
 
-                if matched_faculty:
+                # --- VISITING / GUEST FACULTY FALLBACK ---
+                if not matched_faculty:
+                    matched_faculty = txt
+                    faculty_code = "VISITING"
+
+                # Update internal faculty tracker if they belong to internal roster
+                if matched_faculty in faculty_day_schedule:
                     detail = f"{cohort} | Sec {sec} ({slot}) - {clean_mod}"
                     if dt not in faculty_day_schedule[matched_faculty]:
                         faculty_day_schedule[matched_faculty][dt] = []
                     if detail not in faculty_day_schedule[matched_faculty][dt]:
                         faculty_day_schedule[matched_faculty][dt].append(detail)
 
-                    if cohort not in cohort_day_schedule[dt]:
-                        cohort_day_schedule[dt][cohort] = {}
-                    if sec not in cohort_day_schedule[dt][cohort]:
-                        cohort_day_schedule[dt][cohort][sec] = {"module": clean_mod, "morning": None, "afternoon": None}
+                # ALWAYS record the cohort timetable session regardless of faculty type
+                if cohort not in cohort_day_schedule[dt]:
+                    cohort_day_schedule[dt][cohort] = {}
+                if sec not in cohort_day_schedule[dt][cohort]:
+                    cohort_day_schedule[dt][cohort][sec] = {"module": clean_mod, "morning": None, "afternoon": None}
 
-                    if slot in ['Morning', 'Full Day', 'Lead']:
-                        cohort_day_schedule[dt][cohort][sec]["morning"] = faculty_code
-                    if slot in ['Afternoon', 'Full Day', 'Assisting']:
-                        cohort_day_schedule[dt][cohort][sec]["afternoon"] = faculty_code
+                if slot in ['Morning', 'Full Day', 'Lead']:
+                    cohort_day_schedule[dt][cohort][sec]["morning"] = faculty_code
+                if slot in ['Afternoon', 'Full Day', 'Assisting']:
+                    cohort_day_schedule[dt][cohort][sec]["afternoon"] = faculty_code
 
     return calendar_cols, faculty_list, faculty_day_schedule, cohort_day_schedule
 
@@ -510,9 +518,9 @@ with tab4:
     with a_col1:
         cohort_choice = st.selectbox("Select Cohort:", ["UG-Sem 3", "UG-Sem 5", "UG-Sem 7", "PG-Sem 1", "PG-Sem 3"])
     with a_col2:
-        auto_start = st.date_input("Start Date", datetime.date(2026, 9, 7), key="auto_start")
+        auto_start = st.date_input("Start Date", datetime.date(2026, 9, 15), key="auto_start")
     with a_col3:
-        auto_end = st.date_input("End Date", datetime.date(2026, 9, 11), key="auto_end")
+        auto_end = st.date_input("End Date", datetime.date(2026, 9, 16), key="auto_end")
 
     auto_thu_half = st.checkbox("Thursday Afternoon Off (Slots 3 & 4 off)", value=True, key="auto_thu")
     default_block = st.text_input("Academic Block", value="F", key="auto_block")
