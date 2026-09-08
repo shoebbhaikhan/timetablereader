@@ -6,8 +6,6 @@ import os
 import re
 import json
 
-# --- CONFIGURATION & SECURITY ---
-ADMIN_PASSWORD = "ArsenalFC"  # Change to your desired admin password
 EXCLUSION_FILE = "excluded_faculty.json"
 
 st.set_page_config(
@@ -16,7 +14,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# High-contrast, theme-agnostic styling
 st.markdown("""
 <style>
     .badge-free {
@@ -46,7 +43,6 @@ st.markdown("""
         padding: 12px 16px;
         margin-bottom: 8px;
     }
-    /* Weekly Timetable Calendar Styles */
     .wt-table {
         width: 100%;
         border-collapse: collapse;
@@ -96,7 +92,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# --- PERSISTENT EXCLUSION HELPERS ---
 def get_excluded_faculty():
     if os.path.exists(EXCLUSION_FILE):
         try:
@@ -107,12 +102,6 @@ def get_excluded_faculty():
     return []
 
 
-def save_excluded_faculty(excluded_list):
-    with open(EXCLUSION_FILE, "w") as f:
-        json.dump(excluded_list, f)
-
-
-# --- CURRICULUM & ERP MASTER DATA ---
 COURSES_DATA = [
     # 1st Sem B.Design (PSD) Batch 2026-30
     {"code": "26UDU01001", "title": "Design Essentials", "sem": "I", "prog_code": "1019", "batch": "1st Sem B.Des (PSD) 2026-30"},
@@ -249,7 +238,6 @@ SLOT_TIMINGS_MAP = {
 }
 
 
-# --- PARSE WORKBOOK DATA ---
 @st.cache_data
 def load_master_data():
     files = [f for f in os.listdir('.') if f.endswith('.xlsx') and not f.startswith('~')]
@@ -260,7 +248,6 @@ def load_master_data():
     file_path = files[0]
     wb = openpyxl.load_workbook(file_path, data_only=True)
     
-    # 1. Faculty Roster
     df_fw = pd.read_excel(file_path, sheet_name='Faculty Work Load ')
     raw_faculties = df_fw['Faculty Name '].dropna().unique().tolist()
     
@@ -276,7 +263,6 @@ def load_master_data():
             fn = tokens[0]
             first_name_to_full[fn] = full
             faculty_list.append(full)
-            # Match with ERP faculty code
             for k_erp, code_erp in DEFAULT_FACULTY_LIST.items():
                 if fn in k_erp.lower():
                     first_name_to_code[fn] = code_erp
@@ -284,7 +270,6 @@ def load_master_data():
             
     faculty_list = sorted(list(set(faculty_list)))
     
-    # 2. Main Timetable Schedule
     sheet_name = 'Morning_Afternoon Updated_Timet' if 'Morning_Afternoon Updated_Timet' in wb.sheetnames else wb.sheetnames[0]
     ws = wb[sheet_name]
 
@@ -312,7 +297,6 @@ def load_master_data():
             except Exception:
                 continue
 
-    # Teaching cell rows in sheet
     teaching_rows = [
         # UG-Sem 3
         (14, 'UG-Sem 3', 'A', 'Morning', 8),
@@ -373,12 +357,10 @@ def load_master_data():
                         faculty_code = first_name_to_code.get(tok, "")
                         break
 
-                # Visiting/guest faculty fallback
                 if not matched_faculty:
                     matched_faculty = txt
                     faculty_code = "VISITING"
 
-                # Ensure faculty exists in availability dictionary
                 if matched_faculty not in faculty_day_schedule:
                     faculty_day_schedule[matched_faculty] = {}
                     if matched_faculty not in faculty_list:
@@ -390,7 +372,6 @@ def load_master_data():
                 if detail not in faculty_day_schedule[matched_faculty][dt]:
                     faculty_day_schedule[matched_faculty][dt].append(detail)
 
-                # Record session in cohort schedule
                 if cohort not in cohort_day_schedule[dt]:
                     cohort_day_schedule[dt][cohort] = {}
                 if sec not in cohort_day_schedule[dt][cohort]:
@@ -418,15 +399,13 @@ except Exception as e:
     st.error(f"Error loading master dataset: {e}")
     st.stop()
 
-# --- TOP UI TABS ---
 st.title("UID Department of Industrial Design")
 st.caption("Master Academic Schedule, Faculty Availability & Timetable Generator")
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔍 Faculty Availability", 
     "👤 Individual Schedule",
     "🗓️ Weekly Timetable",
-    "🔒 Admin Exclusions",
     "⚡ Auto Timetable Export",
     "🛠️ Custom Generator Form"
 ])
@@ -525,7 +504,6 @@ with tab3:
     st.subheader("🗓️ Weekly Department Timetable")
     st.caption("Comprehensive weekly grid displaying all sections with Sessions 1–4 color-coded.")
 
-    # Group columns by Week
     weeks_dict = {}
     for c_info in calendar_cols:
         w = c_info['week']
@@ -546,7 +524,6 @@ with tab3:
     selected_week_lbl = st.selectbox("Select Week:", options=week_options, index=def_idx, key="weekly_tab_select")
     selected_w_name, week_days = week_data_map[selected_week_lbl]
 
-    # Filter to instructional weekdays (Mon to Fri)
     display_days = [d for d in week_days if d['date'].weekday() < 5]
 
     cohort_filter = st.selectbox(
@@ -566,10 +543,7 @@ with tab3:
 
     active_cohorts = [cohort_filter] if cohort_filter != "All Cohorts" else list(cohort_sections.keys())
 
-    # Build HTML Table Grid
     html = ['<table class="wt-table">']
-
-    # Header Row
     html.append('<thead><tr>')
     html.append('<th class="wt-th" style="width: 12%;">Cohort / Section</th>')
     for d in display_days:
@@ -578,7 +552,6 @@ with tab3:
         html.append(f'<th class="wt-th">{d_name}<br><small>{d_num}</small></th>')
     html.append('</tr></thead><tbody>')
 
-    # Rows per Cohort & Section
     for ch in active_cohorts:
         for sec in cohort_sections.get(ch, []):
             row_lbl = f"{ch}<br><span style='color: #0284c7;'>Sec {sec}</span>"
@@ -599,11 +572,9 @@ with tab3:
                     fac_a = sec_info.get("faculty_name_a") or "—"
                     is_thursday = (dt.weekday() == 3)
 
-                    # Morning: S1 & S2
                     html.append(f'<div class="s-pill s1"><b>S1:</b> {fac_m}<br><small>{mod_short}</small></div>')
                     html.append(f'<div class="s-pill s2"><b>S2:</b> {fac_m}<br><small>{mod_short}</small></div>')
 
-                    # Afternoon: S3 & S4
                     if is_thursday:
                         html.append('<div class="s-pill s-off">S3 & S4: Off</div>')
                     else:
@@ -620,56 +591,9 @@ with tab3:
 
 
 # ==========================================================
-# TAB 4: ADMIN EXCLUSIONS
+# TAB 4: WORKFLOW A — AUTO TIMETABLE EXPORT FROM EXCEL
 # ==========================================================
 with tab4:
-    st.subheader("Admin Control: Faculty Availability Visibility")
-    st.caption("Manage faculty members who should never appear in the available/free list.")
-
-    password_attempt = st.text_input("Enter Admin Password to Unlock:", type="password", key="admin_pwd_field")
-
-    if password_attempt:
-        if password_attempt == ADMIN_PASSWORD:
-            st.success("Admin authenticated.")
-
-            current_exclusions = set(get_excluded_faculty())
-
-            st.write("### Faculty Visibility Roster")
-            st.caption("Switch the toggle on to **exclude** a faculty member from the Free list.")
-
-            h1, h2 = st.columns([3, 1])
-            h1.markdown("**Faculty Name**")
-            h2.markdown("**Exclude Status**")
-            st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
-
-            new_exclusions = []
-
-            for idx, fac in enumerate(faculty_list):
-                with st.container(border=True):
-                    c1, c2 = st.columns([3, 1])
-                    c1.markdown(f"**{fac}**")
-                    is_excluded = c2.toggle(
-                        label=f"Exclude {fac}",
-                        value=(fac in current_exclusions),
-                        key=f"toggle_excl_{idx}",
-                        label_visibility="collapsed"
-                    )
-                    if is_excluded:
-                        new_exclusions.append(fac)
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Save Changes", type="primary", key="save_admin_btn"):
-                save_excluded_faculty(new_exclusions)
-                st.success("Roster visibility updated successfully!")
-                st.rerun()
-        else:
-            st.error("Incorrect password. Access denied.")
-
-
-# ==========================================================
-# TAB 5: WORKFLOW A — AUTO TIMETABLE EXPORT FROM EXCEL
-# ==========================================================
-with tab5:
     st.subheader("⚡ Auto-Generate Timetable CSV from Master Sheet")
     st.caption("Inspects the master spreadsheet, extracts the exact module and faculty assigned to each section, and maps it directly into ERP CSV format.")
 
@@ -700,7 +624,7 @@ with tab5:
             cur_date = auto_start
 
             while cur_date <= auto_end:
-                if cur_date.weekday() < 5:  # Monday to Friday
+                if cur_date.weekday() < 5:
                     date_str = cur_date.strftime("%Y-%m-%d")
                     day_cohorts = cohort_day_schedule.get(cur_date, {})
                     cohort_data = day_cohorts.get(cohort_choice, {})
@@ -761,9 +685,9 @@ with tab5:
 
 
 # ==========================================================
-# TAB 6: WORKFLOW B — MANUAL / FORM-BASED GENERATOR
+# TAB 5: WORKFLOW B — MANUAL / FORM-BASED GENERATOR
 # ==========================================================
-with tab6:
+with tab5:
     st.subheader("🛠️ Custom / Manual Timetable Generator")
     st.caption("Build and customize a timetable schedule using manual overrides, custom rooms, and configurable slots.")
 
