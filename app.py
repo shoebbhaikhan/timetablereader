@@ -248,10 +248,11 @@ def load_master_data():
     file_path = files[0]
     wb = openpyxl.load_workbook(file_path, data_only=True)
     
+    # 1. Official Department Faculty Roster (Strictly internal permanent faculty)
     df_fw = pd.read_excel(file_path, sheet_name='Faculty Work Load ')
     raw_faculties = df_fw['Faculty Name '].dropna().unique().tolist()
     
-    faculty_list = []
+    official_faculty_list = []
     first_name_to_full = {}
     first_name_to_code = {}
 
@@ -262,13 +263,13 @@ def load_master_data():
         if tokens:
             fn = tokens[0]
             first_name_to_full[fn] = full
-            faculty_list.append(full)
+            official_faculty_list.append(full)
             for k_erp, code_erp in DEFAULT_FACULTY_LIST.items():
                 if fn in k_erp.lower():
                     first_name_to_code[fn] = code_erp
                     break
             
-    faculty_list = sorted(list(set(faculty_list)))
+    official_faculty_list = sorted(list(set(official_faculty_list)))
     
     sheet_name = 'Morning_Afternoon Updated_Timet' if 'Morning_Afternoon Updated_Timet' in wb.sheetnames else wb.sheetnames[0]
     ws = wb[sheet_name]
@@ -331,7 +332,7 @@ def load_master_data():
         (74, 'PG-Sem 3', 'Combined', 'Full Day', 71)
     ]
 
-    faculty_day_schedule = {f: {} for f in faculty_list}
+    faculty_day_schedule = {f: {} for f in official_faculty_list}
     cohort_day_schedule = {}
 
     for c_info in calendar_cols:
@@ -357,14 +358,14 @@ def load_master_data():
                         faculty_code = first_name_to_code.get(tok, "")
                         break
 
+                # Visiting/guest instructor or non-roster entry
                 if not matched_faculty:
                     matched_faculty = txt
                     faculty_code = "VISITING"
 
+                # Track schedules for anyone in class (without adding visiting faculty to official roster)
                 if matched_faculty not in faculty_day_schedule:
                     faculty_day_schedule[matched_faculty] = {}
-                    if matched_faculty not in faculty_list:
-                        faculty_list.append(matched_faculty)
 
                 detail = f"{cohort} | Sec {sec} ({slot}) - {clean_mod}"
                 if dt not in faculty_day_schedule[matched_faculty]:
@@ -372,6 +373,7 @@ def load_master_data():
                 if detail not in faculty_day_schedule[matched_faculty][dt]:
                     faculty_day_schedule[matched_faculty][dt].append(detail)
 
+                # Record cohort timetable
                 if cohort not in cohort_day_schedule[dt]:
                     cohort_day_schedule[dt][cohort] = {}
                 if sec not in cohort_day_schedule[dt][cohort]:
@@ -390,11 +392,12 @@ def load_master_data():
                     cohort_day_schedule[dt][cohort][sec]["afternoon"] = faculty_code
                     cohort_day_schedule[dt][cohort][sec]["faculty_name_a"] = matched_faculty
 
-    return calendar_cols, faculty_list, faculty_day_schedule, cohort_day_schedule
+    # Return official_faculty_list strictly for the free pool
+    return calendar_cols, official_faculty_list, faculty_day_schedule, cohort_day_schedule
 
 
 try:
-    calendar_cols, faculty_list, faculty_schedule, cohort_day_schedule = load_master_data()
+    calendar_cols, official_faculty_list, faculty_schedule, cohort_day_schedule = load_master_data()
 except Exception as e:
     st.error(f"Error loading master dataset: {e}")
     st.stop()
@@ -415,7 +418,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 # TAB 1: AVAILABILITY ENGINE
 # ==========================================================
 with tab1:
-    excluded_faculties = get_excluded_faculty()
+    excluded_faculties = set(get_excluded_faculty())
 
     date_to_week = {c['date']: c['week'] for c in calendar_cols}
     valid_dates = [c['date'] for c in calendar_cols]
@@ -434,16 +437,21 @@ with tab1:
 
     current_week = date_to_week.get(selected_date, "Non-Instructional / Holiday")
 
+    # 1. Find ALL instructors teaching on this date (internal + visiting)
     busy_members = []
-    free_members = []
-
-    for fac in faculty_list:
-        classes = faculty_schedule.get(fac, {}).get(selected_date, [])
-        if classes:
+    busy_names = set()
+    for fac, dates in faculty_schedule.items():
+        classes = dates.get(selected_date, [])
+        # Ignore non-teaching placeholders like 'Mid Term', 'No Faculty'
+        if classes and not any(skip in fac.lower() for skip in ['mid term', 'no faculty', 'workshop', 'tours']):
             busy_members.append((fac, classes))
-        else:
-            if fac not in excluded_faculties:
-                free_members.append(fac)
+            busy_names.add(fac)
+
+    # 2. Free faculty is STRICTLY official roster members who have NO class and are not in excluded_faculty.json
+    free_members = []
+    for fac in official_faculty_list:
+        if fac not in busy_names and fac not in excluded_faculties:
+            free_members.append(fac)
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Week", current_week)
@@ -456,7 +464,7 @@ with tab1:
 
     with col_free:
         st.subheader(f"✅ Free Faculty ({len(free_members)})")
-        st.caption("Available for substitution/jury duties:")
+        st.caption("Official department faculty available for substitution:")
         f1, f2 = st.columns(2)
         for idx, fac in enumerate(free_members):
             target = f1 if idx % 2 == 0 else f2
@@ -479,7 +487,7 @@ with tab1:
 # TAB 2: INDIVIDUAL LOOKUP
 # ==========================================================
 with tab2:
-    selected_fac = st.selectbox("Select Faculty Member:", options=faculty_list, key="indiv_fac_select")
+    selected_fac = st.selectbox("Select Faculty Member:", options=official_faculty_list, key="indiv_fac_select")
     sched = faculty_schedule.get(selected_fac, {})
 
     if sched:
