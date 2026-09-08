@@ -46,6 +46,52 @@ st.markdown("""
         padding: 12px 16px;
         margin-bottom: 8px;
     }
+    /* Weekly Timetable Calendar Styles */
+    .wt-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: inherit;
+        margin-top: 14px;
+    }
+    .wt-th {
+        background-color: #0f172a;
+        color: #ffffff;
+        padding: 10px 8px;
+        text-align: center;
+        font-size: 0.88rem;
+        border: 1px solid #334155;
+    }
+    .wt-td-label {
+        background-color: #f8fafc;
+        color: #0f172a;
+        font-weight: 700;
+        padding: 8px 10px;
+        border: 1px solid #cbd5e1;
+        font-size: 0.85rem;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+    .wt-td {
+        border: 1px solid #cbd5e1;
+        padding: 6px 4px;
+        vertical-align: top;
+        background-color: #ffffff;
+        width: 18%;
+    }
+    .s-pill {
+        border-radius: 4px;
+        padding: 3px 6px;
+        margin-bottom: 4px;
+        font-size: 0.74rem;
+        line-height: 1.25;
+        display: block;
+        border-left: 3px solid transparent;
+    }
+    .s1 { background: #dbeafe; color: #1e40af; border-color: #2563eb; }
+    .s2 { background: #ccfbf1; color: #0f766e; border-color: #0d9488; }
+    .s3 { background: #fef3c7; color: #92400e; border-color: #d97706; }
+    .s4 { background: #f3e8ff; color: #6b21a8; border-color: #9333ea; }
+    .s-off { background: #f1f5f9; color: #94a3b8; font-style: italic; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -302,7 +348,6 @@ def load_master_data():
     ]
 
     faculty_day_schedule = {f: {} for f in faculty_list}
-    # Raw cohort mappings: dt -> { cohort: { section: { 'module': name, 'morning': fac, 'afternoon': fac } } }
     cohort_day_schedule = {}
 
     for c_info in calendar_cols:
@@ -328,29 +373,41 @@ def load_master_data():
                         faculty_code = first_name_to_code.get(tok, "")
                         break
 
-                # --- VISITING / GUEST FACULTY FALLBACK ---
+                # Visiting/guest faculty fallback
                 if not matched_faculty:
                     matched_faculty = txt
                     faculty_code = "VISITING"
 
-                # Update internal faculty tracker if they belong to internal roster
-                if matched_faculty in faculty_day_schedule:
-                    detail = f"{cohort} | Sec {sec} ({slot}) - {clean_mod}"
-                    if dt not in faculty_day_schedule[matched_faculty]:
-                        faculty_day_schedule[matched_faculty][dt] = []
-                    if detail not in faculty_day_schedule[matched_faculty][dt]:
-                        faculty_day_schedule[matched_faculty][dt].append(detail)
+                # Ensure faculty exists in availability dictionary
+                if matched_faculty not in faculty_day_schedule:
+                    faculty_day_schedule[matched_faculty] = {}
+                    if matched_faculty not in faculty_list:
+                        faculty_list.append(matched_faculty)
 
-                # ALWAYS record the cohort timetable session regardless of faculty type
+                detail = f"{cohort} | Sec {sec} ({slot}) - {clean_mod}"
+                if dt not in faculty_day_schedule[matched_faculty]:
+                    faculty_day_schedule[matched_faculty][dt] = []
+                if detail not in faculty_day_schedule[matched_faculty][dt]:
+                    faculty_day_schedule[matched_faculty][dt].append(detail)
+
+                # Record session in cohort schedule
                 if cohort not in cohort_day_schedule[dt]:
                     cohort_day_schedule[dt][cohort] = {}
                 if sec not in cohort_day_schedule[dt][cohort]:
-                    cohort_day_schedule[dt][cohort][sec] = {"module": clean_mod, "morning": None, "afternoon": None}
+                    cohort_day_schedule[dt][cohort][sec] = {
+                        "module": clean_mod,
+                        "morning": None,
+                        "afternoon": None,
+                        "faculty_name_m": None,
+                        "faculty_name_a": None
+                    }
 
                 if slot in ['Morning', 'Full Day', 'Lead']:
                     cohort_day_schedule[dt][cohort][sec]["morning"] = faculty_code
+                    cohort_day_schedule[dt][cohort][sec]["faculty_name_m"] = matched_faculty
                 if slot in ['Afternoon', 'Full Day', 'Assisting']:
                     cohort_day_schedule[dt][cohort][sec]["afternoon"] = faculty_code
+                    cohort_day_schedule[dt][cohort][sec]["faculty_name_a"] = matched_faculty
 
     return calendar_cols, faculty_list, faculty_day_schedule, cohort_day_schedule
 
@@ -365,9 +422,10 @@ except Exception as e:
 st.title("UID Department of Industrial Design")
 st.caption("Master Academic Schedule, Faculty Availability & Timetable Generator")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔍 Faculty Availability", 
     "👤 Individual Schedule",
+    "🗓️ Weekly Timetable",
     "🔒 Admin Exclusions",
     "⚡ Auto Timetable Export",
     "🛠️ Custom Generator Form"
@@ -461,9 +519,110 @@ with tab2:
 
 
 # ==========================================================
-# TAB 3: ADMIN EXCLUSIONS
+# TAB 3: WEEKLY CALENDAR TIMETABLE VIEW
 # ==========================================================
 with tab3:
+    st.subheader("🗓️ Weekly Department Timetable")
+    st.caption("Comprehensive weekly grid displaying all sections with Sessions 1–4 color-coded.")
+
+    # Group columns by Week
+    weeks_dict = {}
+    for c_info in calendar_cols:
+        w = c_info['week']
+        if w not in weeks_dict:
+            weeks_dict[w] = []
+        weeks_dict[w].append(c_info)
+
+    week_options = []
+    week_data_map = {}
+    for w, days in weeks_dict.items():
+        d_start = days[0]['date'].strftime('%d %b')
+        d_end = days[-1]['date'].strftime('%d %b %Y')
+        lbl = f"{w}  ({d_start} - {d_end})"
+        week_options.append(lbl)
+        week_data_map[lbl] = (w, days)
+
+    def_idx = next((i for i, opt in enumerate(week_options) if "WEEK 11" in opt), 0)
+    selected_week_lbl = st.selectbox("Select Week:", options=week_options, index=def_idx, key="weekly_tab_select")
+    selected_w_name, week_days = week_data_map[selected_week_lbl]
+
+    # Filter to instructional weekdays (Mon to Fri)
+    display_days = [d for d in week_days if d['date'].weekday() < 5]
+
+    cohort_filter = st.selectbox(
+        "Select Cohort:",
+        options=["All Cohorts", "UG-Sem 3", "UG-Sem 5", "UG-Sem 7", "PG-Sem 1", "PG-Sem 3"],
+        index=1,
+        key="weekly_cohort_select"
+    )
+
+    cohort_sections = {
+        "UG-Sem 3": ["A", "B", "C", "D", "E"],
+        "UG-Sem 5": ["A", "B", "C", "D"],
+        "UG-Sem 7": ["A", "B", "C"],
+        "PG-Sem 1": ["Combined"],
+        "PG-Sem 3": ["Combined"]
+    }
+
+    active_cohorts = [cohort_filter] if cohort_filter != "All Cohorts" else list(cohort_sections.keys())
+
+    # Build HTML Table Grid
+    html = ['<table class="wt-table">']
+
+    # Header Row
+    html.append('<thead><tr>')
+    html.append('<th class="wt-th" style="width: 12%;">Cohort / Section</th>')
+    for d in display_days:
+        d_name = d['date'].strftime('%a')
+        d_num = d['date'].strftime('%d %b')
+        html.append(f'<th class="wt-th">{d_name}<br><small>{d_num}</small></th>')
+    html.append('</tr></thead><tbody>')
+
+    # Rows per Cohort & Section
+    for ch in active_cohorts:
+        for sec in cohort_sections.get(ch, []):
+            row_lbl = f"{ch}<br><span style='color: #0284c7;'>Sec {sec}</span>"
+            html.append('<tr>')
+            html.append(f'<td class="wt-td-label">{row_lbl}</td>')
+
+            for d in display_days:
+                dt = d['date']
+                day_ch_data = cohort_day_schedule.get(dt, {}).get(ch, {})
+                sec_info = day_ch_data.get(sec, None)
+
+                html.append('<td class="wt-td">')
+
+                if sec_info:
+                    mod_name = sec_info.get("module", "")
+                    mod_short = (mod_name[:24] + '...') if len(mod_name) > 24 else mod_name
+                    fac_m = sec_info.get("faculty_name_m") or "—"
+                    fac_a = sec_info.get("faculty_name_a") or "—"
+                    is_thursday = (dt.weekday() == 3)
+
+                    # Morning: S1 & S2
+                    html.append(f'<div class="s-pill s1"><b>S1:</b> {fac_m}<br><small>{mod_short}</small></div>')
+                    html.append(f'<div class="s-pill s2"><b>S2:</b> {fac_m}<br><small>{mod_short}</small></div>')
+
+                    # Afternoon: S3 & S4
+                    if is_thursday:
+                        html.append('<div class="s-pill s-off">S3 & S4: Off</div>')
+                    else:
+                        html.append(f'<div class="s-pill s3"><b>S3:</b> {fac_a}<br><small>{mod_short}</small></div>')
+                        html.append(f'<div class="s-pill s4"><b>S4:</b> {fac_a}<br><small>{mod_short}</small></div>')
+                else:
+                    html.append('<div class="s-pill s-off" style="text-align: center; padding: 22px 0;">No Sessions</div>')
+
+                html.append('</td>')
+            html.append('</tr>')
+
+    html.append('</tbody></table>')
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
+# ==========================================================
+# TAB 4: ADMIN EXCLUSIONS
+# ==========================================================
+with tab4:
     st.subheader("Admin Control: Faculty Availability Visibility")
     st.caption("Manage faculty members who should never appear in the available/free list.")
 
@@ -508,9 +667,9 @@ with tab3:
 
 
 # ==========================================================
-# TAB 4: WORKFLOW A — AUTO TIMETABLE EXPORT FROM EXCEL
+# TAB 5: WORKFLOW A — AUTO TIMETABLE EXPORT FROM EXCEL
 # ==========================================================
-with tab4:
+with tab5:
     st.subheader("⚡ Auto-Generate Timetable CSV from Master Sheet")
     st.caption("Inspects the master spreadsheet, extracts the exact module and faculty assigned to each section, and maps it directly into ERP CSV format.")
 
@@ -518,14 +677,13 @@ with tab4:
     with a_col1:
         cohort_choice = st.selectbox("Select Cohort:", ["UG-Sem 3", "UG-Sem 5", "UG-Sem 7", "PG-Sem 1", "PG-Sem 3"])
     with a_col2:
-        auto_start = st.date_input("Start Date", datetime.date(2026, 9, 15), key="auto_start")
+        auto_start = st.date_input("Start Date", datetime.date(2026, 9, 7), key="auto_start")
     with a_col3:
-        auto_end = st.date_input("End Date", datetime.date(2026, 9, 16), key="auto_end")
+        auto_end = st.date_input("End Date", datetime.date(2026, 9, 11), key="auto_end")
 
     auto_thu_half = st.checkbox("Thursday Afternoon Off (Slots 3 & 4 off)", value=True, key="auto_thu")
     default_block = st.text_input("Academic Block", value="F", key="auto_block")
 
-    # Map cohort to default Prog Code & Sem
     cohort_erp_defaults = {
         "UG-Sem 3": {"prog": "1019", "sem": "III"},
         "UG-Sem 5": {"prog": "1019", "sem": "V"},
@@ -550,13 +708,11 @@ with tab4:
                     is_thursday = (cur_date.weekday() == 3)
                     active_slots = [1, 2] if (is_thursday and auto_thu_half) else [1, 2, 3, 4]
 
-                    # Loop through all sections assigned to this cohort on this day
                     for sec_code, sec_info in cohort_data.items():
                         mod_title = sec_info["module"]
                         fac_morning = sec_info["morning"]
                         fac_afternoon = sec_info["afternoon"]
 
-                        # Lookup course code from COURSES_DATA
                         matched_course = next((c for c in COURSES_DATA if c["title"].lower() in mod_title.lower() or mod_title.lower() in c["title"].lower()), None)
                         c_code = matched_course["code"] if matched_course else "3120300"
                         c_type = "MANDATORY"
@@ -605,9 +761,9 @@ with tab4:
 
 
 # ==========================================================
-# TAB 5: WORKFLOW B — MANUAL / FORM-BASED GENERATOR
+# TAB 6: WORKFLOW B — MANUAL / FORM-BASED GENERATOR
 # ==========================================================
-with tab5:
+with tab6:
     st.subheader("🛠️ Custom / Manual Timetable Generator")
     st.caption("Build and customize a timetable schedule using manual overrides, custom rooms, and configurable slots.")
 
@@ -788,7 +944,7 @@ with tab5:
             
             df_result = pd.DataFrame(rows)
             st.success(f"Generated {len(df_result)} schedule rows successfully!")
-            st.dataframe(df_result, use_container_width=True)
+            st.table(df_result)
             
             csv_bytes = df_result.to_csv(index=False).encode('utf-8')
             sample_prog = slot1_cfg["prog"]
