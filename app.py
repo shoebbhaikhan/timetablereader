@@ -512,6 +512,7 @@ with tab3:
     st.subheader("🗓️ Weekly Department Timetable")
     st.caption("Comprehensive weekly grid displaying all sections with Sessions 1–4 color-coded.")
 
+    # Group columns by Week
     weeks_dict = {}
     for c_info in calendar_cols:
         w = c_info['week']
@@ -529,17 +530,42 @@ with tab3:
         week_data_map[lbl] = (w, days)
 
     def_idx = next((i for i, opt in enumerate(week_options) if "WEEK 11" in opt), 0)
-    selected_week_lbl = st.selectbox("Select Week:", options=week_options, index=def_idx, key="weekly_tab_select")
-    selected_w_name, week_days = week_data_map[selected_week_lbl]
+
+    # Initialize active cohort in session state
+    if "selected_cohort" not in st.session_state:
+        st.session_state["selected_cohort"] = "UG-Sem 3"
+
+    # Layout: 1/3 Week Dropdown on the left, 2/3 Cohort Buttons on the right
+    col_week, col_cohorts = st.columns([1.1, 2.4])
+
+    with col_week:
+        selected_week_lbl = st.selectbox(
+            "Select Week:",
+            options=week_options,
+            index=def_idx,
+            key="weekly_tab_select"
+        )
+        selected_w_name, week_days = week_data_map[selected_week_lbl]
+
+    with col_cohorts:
+        st.markdown("<p style='font-size: 0.88rem; font-weight: 500; margin-bottom: 6px;'>Select Cohort:</p>", unsafe_allow_html=True)
+        cohort_buttons = ["UG-Sem 3", "UG-Sem 5", "UG-Sem 7", "PG-Sem 1", "PG-Sem 3", "All"]
+        btn_cols = st.columns(len(cohort_buttons))
+
+        for b_col, opt in zip(btn_cols, cohort_buttons):
+            is_active = (st.session_state["selected_cohort"] == opt)
+            if b_col.button(
+                opt,
+                type="primary" if is_active else "secondary",
+                use_container_width=True,
+                key=f"btn_ch_{opt}"
+            ):
+                st.session_state["selected_cohort"] = opt
+                st.rerun()
+
+    cohort_filter = "All Cohorts" if st.session_state["selected_cohort"] == "All" else st.session_state["selected_cohort"]
 
     display_days = [d for d in week_days if d['date'].weekday() < 5]
-
-    cohort_filter = st.selectbox(
-        "Select Cohort:",
-        options=["All Cohorts", "UG-Sem 3", "UG-Sem 5", "UG-Sem 7", "PG-Sem 1", "PG-Sem 3"],
-        index=1,
-        key="weekly_cohort_select"
-    )
 
     cohort_sections = {
         "UG-Sem 3": ["A", "B", "C", "D", "E"],
@@ -596,7 +622,6 @@ with tab3:
 
     html.append('</tbody></table>')
     st.markdown("".join(html), unsafe_allow_html=True)
-
 
 # ==========================================================
 # TAB 4: WORKFLOW A — AUTO TIMETABLE EXPORT FROM EXCEL
