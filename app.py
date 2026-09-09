@@ -168,60 +168,24 @@ COURSES_DATA = [
 DEFAULT_FACULTY_LIST = {
     "-- None / Leave Empty --": "",
     "✏️ [Manual / Custom Entry]": "CUSTOM",
-    "Aakanksha Batra (15122)": "15122",
-    "Aayush Amit Bhingare (15184)": "15184",
-    "Abhishek Karmakar (15254)": "15254",
-    "Aditya Chauhan (10084)": "10084",
-    "Aditya Lingam (15067)": "15067",
-    "Agnivesh Sharma (15206)": "15206",
-    "Aigers Liepins (15183)": "15183",
-    "Ajay Bisht (15075)": "15075",
-    "Akhil Tamta (15153)": "15153",
-    "Anahita Suri (15027)": "15027",
-    "Anthony Alphonso (15235)": "15235",
-    "Anu Jain (15204)": "15204",
-    "Anupam Tiwari (15212)": "15212",
-    "Anupam Tomer (15234)": "15234",
-    "Arjun Sengar (15124)": "15124",
-    "Arshkirat Singh Gill (15279)": "15279",
-    "Arun Gupta (15187)": "15187",
-    "Arun Soman (15172)": "15172",
-    "Arunita Paul (15166)": "15166",
-    "Ashish Kumar (15214)": "15214",
-    "Ashish Nar (15325)": "15325",
-    "Ashuj Chawda (15506)": "15506",
-    "Ashwani(Alex) Pawar (15215)": "15215",
-    "DA Siddharth (15445)": "15445",
-    "Dhanush Kumar (15497)": "15497",
-    "Diksha Singh (15250)": "15250",
-    "Dr. Arunita Paul (15166)": "15166",
-    "Dr. Shilpi Bora (15324)": "15324",
-    "Hirock Jyoti Roy (3438)": "3438",
-    "Kishan Chavda (15177)": "15177",
-    "Malekulashter (15342)": "15342",
-    "Mark Timothy (15231)": "15231",
-    "Navneet Kumar (15095)": "15095",
-    "Niral Desai (15104)": "15104",
-    "Parag Sarma (15182)": "15182",
-    "Pradeep Patil (15133)": "15133",
-    "Prem Gunjan (15109)": "15109",
-    "Rakesh Sharma (10039)": "10039",
-    "Ravi N Sachula (3472)": "3472",
-    "Sabyasachi Biswas (15224)": "15224",
-    "Sachin Khankhoje (15121)": "15121",
     "Sharad Shekar Shetty (15044)": "15044",
-    "Shoeb Iqbal Khan (15255)": "15255",
-    "Shyambihari Shankarprasad Prajapati (15005)": "15005",
-    "Sree Hari B Lal (15546)": "15546",
-    "Sreya Acharyya (15461)": "15461",
-    "Subhash Chandra Bose Yalala (15435)": "15435",
-    "Sundar Mahalingam (10098)": "10098",
-    "Sweta Raj (15222)": "15222",
+    "Kishan Chavda (15177)": "15177",
     "Umang Shah (15069)": "15069",
-    "Varshin Vala (3333)": "3333",
-    "Venkateshwaran N (15201)": "15201",
-    "Vipul Nagjibhai Prajapati (3479)": "3479",
-    "Vipul Vinayak Jadhav (15500)": "15500"
+    "Shoeb Iqbal Khan (15255)": "15255",
+    "Abhishek Karmakar (15254)": "15254",
+    "Malekulashter (15342)": "15342",
+    "Arshkirat Singh Gill (15279)": "15279",
+    "Aditya Lingam (15067)": "15067",
+    "Sreya Acharyya (15461)": "15461",
+    "Dhanush Kumar (15497)": "15497",
+    "Vipul Vinayak Jadhav (15500)": "15500",
+    "Ashuj Chawda (15506)": "15506",
+    "DA Siddharth (15445)": "15445",
+    "Sree Hari B Lal (15546)": "15546",
+    "Mithil Suresh (15552)": "15552",
+    "Bhargav Manchalla (15556)": "15556",
+    "Atul Kedia (15477)": "15477",
+    "Bhargav Mistry (15478)": "15478",
 }
 
 COURSE_OPTIONS = {f"{c['title']}  |  [{c['code']}]  ({c['batch']})": c for c in COURSES_DATA}
@@ -248,7 +212,6 @@ def load_master_data():
     file_path = files[0]
     wb = openpyxl.load_workbook(file_path, data_only=True)
     
-    # 1. Official Department Faculty Roster (Strictly internal permanent faculty)
     df_fw = pd.read_excel(file_path, sheet_name='Faculty Work Load ')
     raw_faculties = df_fw['Faculty Name '].dropna().unique().tolist()
     
@@ -358,12 +321,10 @@ def load_master_data():
                         faculty_code = first_name_to_code.get(tok, "")
                         break
 
-                # Visiting/guest instructor or non-roster entry
                 if not matched_faculty:
                     matched_faculty = txt
                     faculty_code = "VISITING"
 
-                # Track schedules for anyone in class (without adding visiting faculty to official roster)
                 if matched_faculty not in faculty_day_schedule:
                     faculty_day_schedule[matched_faculty] = {}
 
@@ -373,7 +334,6 @@ def load_master_data():
                 if detail not in faculty_day_schedule[matched_faculty][dt]:
                     faculty_day_schedule[matched_faculty][dt].append(detail)
 
-                # Record cohort timetable
                 if cohort not in cohort_day_schedule[dt]:
                     cohort_day_schedule[dt][cohort] = {}
                 if sec not in cohort_day_schedule[dt][cohort]:
@@ -392,7 +352,6 @@ def load_master_data():
                     cohort_day_schedule[dt][cohort][sec]["afternoon"] = faculty_code
                     cohort_day_schedule[dt][cohort][sec]["faculty_name_a"] = matched_faculty
 
-    # Return official_faculty_list strictly for the free pool
     return calendar_cols, official_faculty_list, faculty_day_schedule, cohort_day_schedule
 
 
@@ -437,17 +396,14 @@ with tab1:
 
     current_week = date_to_week.get(selected_date, "Non-Instructional / Holiday")
 
-    # 1. Find ALL instructors teaching on this date (internal + visiting)
     busy_members = []
     busy_names = set()
     for fac, dates in faculty_schedule.items():
         classes = dates.get(selected_date, [])
-        # Ignore non-teaching placeholders like 'Mid Term', 'No Faculty'
         if classes and not any(skip in fac.lower() for skip in ['mid term', 'no faculty', 'workshop', 'tours']):
             busy_members.append((fac, classes))
             busy_names.add(fac)
 
-    # 2. Free faculty is STRICTLY official roster members who have NO class and are not in excluded_faculty.json
     free_members = []
     for fac in official_faculty_list:
         if fac not in busy_names and fac not in excluded_faculties:
@@ -512,7 +468,6 @@ with tab3:
     st.subheader("🗓️ Weekly Department Timetable")
     st.caption("Comprehensive weekly grid displaying all sections with Sessions 1–4 color-coded.")
 
-    # Group columns by Week
     weeks_dict = {}
     for c_info in calendar_cols:
         w = c_info['week']
@@ -531,11 +486,9 @@ with tab3:
 
     def_idx = next((i for i, opt in enumerate(week_options) if "WEEK 11" in opt), 0)
 
-    # Initialize active cohort in session state
     if "selected_cohort" not in st.session_state:
         st.session_state["selected_cohort"] = "UG-Sem 3"
 
-    # Layout: 1/3 Week Dropdown on the left, 2/3 Cohort Buttons on the right
     col_week, col_cohorts = st.columns([1.1, 2.4])
 
     with col_week:
@@ -604,12 +557,13 @@ with tab3:
                     mod_short = (mod_name[:24] + '...') if len(mod_name) > 24 else mod_name
                     fac_m = sec_info.get("faculty_name_m") or "—"
                     fac_a = sec_info.get("faculty_name_a") or "—"
-                    is_thursday = (dt.weekday() == 3)
+                    
+                    is_thursday_off = (dt.weekday() == 3 and not ch.startswith("PG"))
 
                     html.append(f'<div class="s-pill s1"><b>S1:</b> {fac_m}<br><small>{mod_short}</small></div>')
                     html.append(f'<div class="s-pill s2"><b>S2:</b> {fac_m}<br><small>{mod_short}</small></div>')
 
-                    if is_thursday:
+                    if is_thursday_off:
                         html.append('<div class="s-pill s-off">S3 & S4: Off</div>')
                     else:
                         html.append(f'<div class="s-pill s3"><b>S3:</b> {fac_a}<br><small>{mod_short}</small></div>')
@@ -622,6 +576,7 @@ with tab3:
 
     html.append('</tbody></table>')
     st.markdown("".join(html), unsafe_allow_html=True)
+
 
 # ==========================================================
 # TAB 4: WORKFLOW A — AUTO TIMETABLE EXPORT FROM EXCEL
@@ -638,7 +593,7 @@ with tab4:
     with a_col3:
         auto_end = st.date_input("End Date", datetime.date(2026, 9, 11), key="auto_end")
 
-    auto_thu_half = st.checkbox("Thursday Afternoon Off (Slots 3 & 4 off)", value=True, key="auto_thu")
+    auto_thu_half = st.checkbox("Thursday Afternoon Off (Slots 3 & 4 off for UG)", value=True, key="auto_thu")
     default_block = st.text_input("Academic Block", value="F", key="auto_block")
 
     cohort_erp_defaults = {
@@ -663,7 +618,8 @@ with tab4:
                     cohort_data = day_cohorts.get(cohort_choice, {})
                     
                     is_thursday = (cur_date.weekday() == 3)
-                    active_slots = [1, 2] if (is_thursday and auto_thu_half) else [1, 2, 3, 4]
+                    is_thu_off = is_thursday and auto_thu_half and not cohort_choice.startswith("PG")
+                    active_slots = [1, 2] if is_thu_off else [1, 2, 3, 4]
 
                     for sec_code, sec_info in cohort_data.items():
                         mod_title = sec_info["module"]
