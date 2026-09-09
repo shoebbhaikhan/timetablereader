@@ -629,18 +629,20 @@ with tab4:
                         matched_course = next((c for c in COURSES_DATA if c["title"].lower() in mod_title.lower() or mod_title.lower() in c["title"].lower()), None)
                         c_code = matched_course["code"] if matched_course else "3120300"
                         c_type = "MANDATORY"
-                        c_classif = "PRACTICAL"
 
                         erp_info = cohort_erp_defaults.get(cohort_choice, {"prog": "1019", "sem": "III"})
 
                         for s_num in active_slots:
                             assigned_faculty = fac_morning if s_num in [1, 2] else fac_afternoon
+                            # Session 1 & 2 are Practical; Session 3 & 4 are Theory
+                            slot_classification = "PRACTICAL" if s_num in [1, 2] else "THEORY"
+
                             extracted_rows.append({
                                 "Date": date_str,
                                 "Program Code": erp_info["prog"],
                                 "Semester Code": erp_info["sem"],
                                 "Year": None,
-                                "Course Classification": c_classif,
+                                "Course Classification": slot_classification,
                                 "Course Code": c_code,
                                 "Course Type": c_type,
                                 "Faculty Code": assigned_faculty,
@@ -680,7 +682,7 @@ with tab5:
     st.subheader("🛠️ Custom / Manual Timetable Generator")
     st.caption("Build and customize a timetable schedule using manual overrides, custom rooms, and configurable slots.")
 
-    def render_course_form(label_prefix, key_suffix, default_index=0, default_classif="THEORY"):
+    def render_course_form(label_prefix, key_suffix, default_index=0, default_classif="PRACTICAL"):
         st.markdown(f"**{label_prefix}**")
         selected_key = st.selectbox(
             f"Subject for {label_prefix}",
@@ -697,7 +699,7 @@ with tab5:
             c3, c4, c5 = st.columns(3)
             sem = c3.selectbox("Semester", SEMESTERS, index=0, key=f"sem_{key_suffix}")
             prog = c4.text_input("Program Code", value="1019", key=f"prog_{key_suffix}")
-            classif = c5.selectbox("Classification", ["THEORY", "PRACTICAL"], index=0 if default_classif == "THEORY" else 1, key=f"classif_{key_suffix}")
+            classif = c5.selectbox("Classification", ["PRACTICAL", "THEORY"], index=0 if default_classif == "PRACTICAL" else 1, key=f"classif_{key_suffix}")
         else:
             code = course_info["code"]
             default_sem_idx = SEMESTERS.index(course_info["sem"]) if course_info["sem"] in SEMESTERS else 0
@@ -705,7 +707,7 @@ with tab5:
             ctype = c1.selectbox("Course Type", ["MANDATORY", "ELECTIVE"], index=0, key=f"ctype_{key_suffix}")
             sem = c2.selectbox("Semester", SEMESTERS, index=default_sem_idx, key=f"sem_{key_suffix}")
             prog = c3.text_input("Prog Code", value=course_info["prog_code"], key=f"prog_{key_suffix}")
-            classif = c4.selectbox("Classification", ["THEORY", "PRACTICAL"], index=0 if default_classif == "THEORY" else 1, key=f"classif_{key_suffix}")
+            classif = c4.selectbox("Classification", ["PRACTICAL", "THEORY"], index=0 if default_classif == "PRACTICAL" else 1, key=f"classif_{key_suffix}")
             st.caption(f"📌 Mapped: **Code:** `{code}` | **Sem:** `{sem}` | **Prog:** `{prog}`")
             
         return {"code": code, "type": ctype, "sem": sem, "prog": prog, "classification": classif}
@@ -750,8 +752,8 @@ with tab5:
 
     m_col, a_col = st.columns(2, gap="large")
     with m_col:
-        st.markdown("### 🌅 Morning Slots")
-        slot1_cfg = render_course_form("Slot 1 (09:30 - 11:00)", "man_s1", default_index=0, default_classif="THEORY")
+        st.markdown("### 🌅 Morning Slots (Default: PRACTICAL)")
+        slot1_cfg = render_course_form("Slot 1 (09:30 - 11:00)", "man_s1", default_index=0, default_classif="PRACTICAL")
         if sync_morning:
             s2_classif = st.selectbox("Slot 2 Classification", ["PRACTICAL", "THEORY"], index=0, key="man_s2_sync")
             slot2_cfg = {**slot1_cfg, "classification": s2_classif}
@@ -759,13 +761,13 @@ with tab5:
             slot2_cfg = render_course_form("Slot 2 (11:20 - 13:10)", "man_s2", default_index=0, default_classif="PRACTICAL")
 
     with a_col:
-        st.markdown("### 🌇 Afternoon Slots")
+        st.markdown("### 🌇 Afternoon Slots (Default: THEORY)")
         slot3_cfg = render_course_form("Slot 3 (14:05 - 15:40)", "man_s3", default_index=1, default_classif="THEORY")
         if sync_afternoon:
-            s4_classif = st.selectbox("Slot 4 Classification", ["PRACTICAL", "THEORY"], index=0, key="man_s4_sync")
+            s4_classif = st.selectbox("Slot 4 Classification", ["THEORY", "PRACTICAL"], index=0, key="man_s4_sync")
             slot4_cfg = {**slot3_cfg, "classification": s4_classif}
         else:
-            slot4_cfg = render_course_form("Slot 4 (16:00 - 17:30)", "man_s4", default_index=1, default_classif="PRACTICAL")
+            slot4_cfg = render_course_form("Slot 4 (16:00 - 17:30)", "man_s4", default_index=1, default_classif="THEORY")
 
     slots_configuration = {1: slot1_cfg, 2: slot2_cfg, 3: slot3_cfg, 4: slot4_cfg}
 
