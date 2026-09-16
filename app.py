@@ -88,6 +88,32 @@ st.markdown("""
     .s3 { background: #fef3c7; color: #92400e; border-color: #d97706; }
     .s4 { background: #f3e8ff; color: #6b21a8; border-color: #9333ea; }
     .s-off { background: #f1f5f9; color: #94a3b8; font-style: italic; }
+
+    /* Completion Status Badges */
+    .status-badge {
+        padding: 4px 12px;
+        border-radius: 9999px;
+        font-weight: 600;
+        font-size: 0.8rem;
+        display: inline-block;
+        text-align: center;
+        letter-spacing: 0.02em;
+    }
+    .status-completed {
+        background-color: #dcfce7;
+        color: #166534;
+        border: 1px solid #bbf7d0;
+    }
+    .status-active {
+        background-color: #ffedd5;
+        color: #9a3412;
+        border: 1px solid #fed7aa;
+    }
+    .status-upcoming {
+        background-color: #cffafe;
+        color: #155e75;
+        border: 1px solid #a5f3fc;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -489,7 +515,7 @@ with tab3:
         lbl = f"{w}  ({d_start} - {d_end})"
         week_options.append(lbl)
         week_data_map[lbl] = (w, days)
-        # Select current week automatically
+        # Select current week automatically based on today's date
         if any(d['date'] == today for d in days):
             def_idx = idx
 
@@ -594,46 +620,56 @@ with tab4:
 
     COURSE_COMPLETION_DATA = [
         # Sem 3
-        {"Cohort": "Sem 3", "Subject": "Personality Development", "Start Date": "06 Jul 2026", "Completion Date": "17 Jul 2026", "Status": "Completed"},
-        {"Cohort": "Sem 3", "Subject": "Indian Design System", "Start Date": "06 Jul 2026", "Completion Date": "17 Jul 2026", "Status": "Completed"},
-        {"Cohort": "Sem 3", "Subject": "Product Visualization", "Start Date": "20 Jul 2026", "Completion Date": "14 Aug 2026", "Status": "Completed"},
-        {"Cohort": "Sem 3", "Subject": "Form, Aesthetic and Emotion", "Start Date": "17 Aug 2026", "Completion Date": "03 Sep 2026", "Status": "Completed"},
-        {"Cohort": "Sem 3", "Subject": "Design Research", "Start Date": "07 Sep 2026", "Completion Date": "22 Sep 2026", "Status": "Active"},
-        {"Cohort": "Sem 3", "Subject": "Studio- Human Centric Design", "Start Date": "28 Sep 2026", "Completion Date": "19 Oct 2026", "Status": "Upcoming"},
-        {"Cohort": "Sem 3", "Subject": "Design Articulation with AI", "Start Date": "26 Oct 2026", "Completion Date": "04 Nov 2026", "Status": "Upcoming"},
+        {"Cohort": "Sem 3", "Subject": "Personality Development", "Start Date": "06 Jul 2026", "Completion Date": "17 Jul 2026", "RawStatus": "Completed"},
+        {"Cohort": "Sem 3", "Subject": "Indian Design System", "Start Date": "06 Jul 2026", "Completion Date": "17 Jul 2026", "RawStatus": "Completed"},
+        {"Cohort": "Sem 3", "Subject": "Product Visualization", "Start Date": "20 Jul 2026", "Completion Date": "14 Aug 2026", "RawStatus": "Completed"},
+        {"Cohort": "Sem 3", "Subject": "Form, Aesthetic and Emotion", "Start Date": "17 Aug 2026", "Completion Date": "03 Sep 2026", "RawStatus": "Completed"},
+        {"Cohort": "Sem 3", "Subject": "Design Research", "Start Date": "07 Sep 2026", "Completion Date": "22 Sep 2026", "RawStatus": "Active"},
+        {"Cohort": "Sem 3", "Subject": "Studio- Human Centric Design", "Start Date": "28 Sep 2026", "Completion Date": "19 Oct 2026", "RawStatus": "Upcoming"},
+        {"Cohort": "Sem 3", "Subject": "Design Articulation with AI", "Start Date": "26 Oct 2026", "Completion Date": "04 Nov 2026", "RawStatus": "Upcoming"},
 
         # Sem 5
-        {"Cohort": "Sem 5", "Subject": "CAID", "Start Date": "06 Jul 2026", "Completion Date": "10 Jul 2026", "Status": "Completed"},
-        {"Cohort": "Sem 5", "Subject": "Human Factors", "Start Date": "13 Jul 2026", "Completion Date": "03 Aug 2026", "Status": "Completed"},
-        {"Cohort": "Sem 5", "Subject": "The Art of Delightful Design", "Start Date": "17 Aug 2026", "Completion Date": "27 Aug 2026", "Status": "Completed"},
-        {"Cohort": "Sem 5", "Subject": "Studio- Humanizing Technology", "Start Date": "04 Aug 2026", "Completion Date": "08 Sep 2026", "Status": "Completed"},
-        {"Cohort": "Sem 5", "Subject": "Portfolio with AI", "Start Date": "09 Sep 2026", "Completion Date": "23 Oct 2026", "Status": "Active"},
-        {"Cohort": "Sem 5", "Subject": "Experience Design", "Start Date": "28 Sep 2026", "Completion Date": "15 Oct 2026", "Status": "Upcoming"},
-        {"Cohort": "Sem 5", "Subject": "Packaging Design", "Start Date": "28 Sep 2026", "Completion Date": "15 Oct 2026", "Status": "Upcoming"},
-        {"Cohort": "Sem 5", "Subject": "Speculative design", "Start Date": "28 Sep 2026", "Completion Date": "15 Oct 2026", "Status": "Upcoming"},
+        {"Cohort": "Sem 5", "Subject": "CAID", "Start Date": "06 Jul 2026", "Completion Date": "10 Jul 2026", "RawStatus": "Completed"},
+        {"Cohort": "Sem 5", "Subject": "Human Factors", "Start Date": "13 Jul 2026", "Completion Date": "03 Aug 2026", "RawStatus": "Completed"},
+        {"Cohort": "Sem 5", "Subject": "The Art of Delightful Design", "Start Date": "17 Aug 2026", "Completion Date": "27 Aug 2026", "RawStatus": "Completed"},
+        {"Cohort": "Sem 5", "Subject": "Studio- Humanizing Technology", "Start Date": "04 Aug 2026", "Completion Date": "08 Sep 2026", "RawStatus": "Completed"},
+        {"Cohort": "Sem 5", "Subject": "Portfolio with AI", "Start Date": "09 Sep 2026", "Completion Date": "23 Oct 2026", "RawStatus": "Active"},
+        {"Cohort": "Sem 5", "Subject": "Experience Design", "Start Date": "28 Sep 2026", "Completion Date": "15 Oct 2026", "RawStatus": "Upcoming"},
+        {"Cohort": "Sem 5", "Subject": "Packaging Design", "Start Date": "28 Sep 2026", "Completion Date": "15 Oct 2026", "RawStatus": "Upcoming"},
+        {"Cohort": "Sem 5", "Subject": "Speculative design", "Start Date": "28 Sep 2026", "Completion Date": "15 Oct 2026", "RawStatus": "Upcoming"},
 
         # Sem 7
-        {"Cohort": "Sem 7", "Subject": "Internship", "Start Date": "Pre-Semester", "Completion Date": "Self-paced", "Status": "Completed"},
-        {"Cohort": "Sem 7", "Subject": "Design Management", "Start Date": "15 Sep 2026", "Completion Date": "28 Sep 2026", "Status": "Active"},
-        {"Cohort": "Sem 7", "Subject": "Studio: System Analysis and Design", "Start Date": "29 Sep 2026", "Completion Date": "03 Nov 2026", "Status": "Upcoming"},
+        {"Cohort": "Sem 7", "Subject": "Internship", "Start Date": "Pre-Semester", "Completion Date": "Self-paced", "RawStatus": "Completed"},
+        {"Cohort": "Sem 7", "Subject": "Design Management", "Start Date": "15 Sep 2026", "Completion Date": "28 Sep 2026", "RawStatus": "Active"},
+        {"Cohort": "Sem 7", "Subject": "Studio: System Analysis and Design", "Start Date": "29 Sep 2026", "Completion Date": "03 Nov 2026", "RawStatus": "Upcoming"},
 
         # PG Sem 1
-        {"Cohort": "PG Sem 1", "Subject": "Professional Communication", "Start Date": "Pre-Semester", "Completion Date": "Orientation", "Status": "Completed"},
-        {"Cohort": "PG Sem 1", "Subject": "Design Foundation", "Start Date": "03 Aug 2026", "Completion Date": "13 Aug 2026", "Status": "Completed"},
-        {"Cohort": "PG Sem 1", "Subject": "Form Studies", "Start Date": "14 Aug 2026", "Completion Date": "03 Sep 2026", "Status": "Completed"},
-        {"Cohort": "PG Sem 1", "Subject": "Design Studio I", "Start Date": "07 Sep 2026", "Completion Date": "01 Oct 2026", "Status": "Active"},
-        {"Cohort": "PG Sem 1", "Subject": "CAID & Visualization with AI", "Start Date": "05 Oct 2026", "Completion Date": "09 Oct 2026", "Status": "Upcoming"},
-        {"Cohort": "PG Sem 1", "Subject": "Emergent Technology", "Start Date": "12 Oct 2026", "Completion Date": "27 Oct 2026", "Status": "Upcoming"},
-        {"Cohort": "PG Sem 1", "Subject": "Design Prototyping", "Start Date": "28 Oct 2026", "Completion Date": "03 Nov 2026", "Status": "Upcoming"},
+        {"Cohort": "PG Sem 1", "Subject": "Professional Communication", "Start Date": "Pre-Semester", "Completion Date": "Orientation", "RawStatus": "Completed"},
+        {"Cohort": "PG Sem 1", "Subject": "Design Foundation", "Start Date": "03 Aug 2026", "Completion Date": "13 Aug 2026", "RawStatus": "Completed"},
+        {"Cohort": "PG Sem 1", "Subject": "Form Studies", "Start Date": "14 Aug 2026", "Completion Date": "03 Sep 2026", "RawStatus": "Completed"},
+        {"Cohort": "PG Sem 1", "Subject": "Design Studio I", "Start Date": "07 Sep 2026", "Completion Date": "01 Oct 2026", "RawStatus": "Active"},
+        {"Cohort": "PG Sem 1", "Subject": "CAID & Visualization with AI", "Start Date": "05 Oct 2026", "Completion Date": "09 Oct 2026", "RawStatus": "Upcoming"},
+        {"Cohort": "PG Sem 1", "Subject": "Emergent Technology", "Start Date": "12 Oct 2026", "Completion Date": "27 Oct 2026", "RawStatus": "Upcoming"},
+        {"Cohort": "PG Sem 1", "Subject": "Design Prototyping", "Start Date": "28 Oct 2026", "Completion Date": "03 Nov 2026", "RawStatus": "Upcoming"},
 
         # PG Sem 3
-        {"Cohort": "PG Sem 3", "Subject": "Internship", "Start Date": "Pre-Semester", "Completion Date": "Self-paced", "Status": "Completed"},
+        {"Cohort": "PG Sem 3", "Subject": "Internship", "Start Date": "Pre-Semester", "Completion Date": "Self-paced", "RawStatus": "Completed"},
         {"Cohort": "PG Sem 3", "Subject": "Research Methodology", "Start Date": "17 Aug 2026", "Completion Date": "21 Aug 2026", "Status": "Completed"},
-        {"Cohort": "PG Sem 3", "Subject": "Studio- Design and Technology", "Start Date": "24 Aug 2026", "Completion Date": "16 Sep 2026", "Status": "Completed"},
-        {"Cohort": "PG Sem 3", "Subject": "User Experience Design", "Start Date": "17 Sep 2026", "Completion Date": "01 Oct 2026", "Status": "Active"},
-        {"Cohort": "PG Sem 3", "Subject": "Craft and Technology", "Start Date": "08 Oct 2026", "Completion Date": "27 Oct 2026", "Status": "Upcoming"},
-        {"Cohort": "PG Sem 3", "Subject": "Entrepreneurship", "Start Date": "28 Oct 2026", "Completion Date": "05 Nov 2026", "Status": "Upcoming"}
+        {"Cohort": "PG Sem 3", "Subject": "Studio- Design and Technology", "Start Date": "24 Aug 2026", "Completion Date": "16 Sep 2026", "RawStatus": "Completed"},
+        {"Cohort": "PG Sem 3", "Subject": "User Experience Design", "Start Date": "17 Sep 2026", "Completion Date": "01 Oct 2026", "RawStatus": "Active"},
+        {"Cohort": "PG Sem 3", "Subject": "Craft and Technology", "Start Date": "08 Oct 2026", "Completion Date": "27 Oct 2026", "RawStatus": "Upcoming"},
+        {"Cohort": "PG Sem 3", "Subject": "Entrepreneurship", "Start Date": "28 Oct 2026", "Completion Date": "05 Nov 2026", "RawStatus": "Upcoming"}
     ]
+
+    status_map = {
+        "Completed": '<span class="status-badge status-completed">Completed</span>',
+        "Active": '<span class="status-badge status-active">Active</span>',
+        "Upcoming": '<span class="status-badge status-upcoming">Upcoming</span>'
+    }
+
+    for item in COURSE_COMPLETION_DATA:
+        raw = item.get("RawStatus", "Upcoming")
+        item["Status"] = status_map.get(raw, f'<span class="status-badge status-upcoming">{raw}</span>')
 
     df_comp = pd.DataFrame(COURSE_COMPLETION_DATA)
 
@@ -645,7 +681,8 @@ with tab4:
     else:
         df_filtered = df_comp
 
-    st.table(df_filtered)
+    display_df = df_filtered[["Cohort", "Subject", "Start Date", "Completion Date", "Status"]]
+    st.write(display_df.to_html(escape=False, index=False), unsafe_allow_html=True)
 
 
 # ==========================================================
