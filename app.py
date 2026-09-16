@@ -364,10 +364,11 @@ except Exception as e:
 st.title("UID Department of Industrial Design")
 st.caption("Master Academic Schedule, Faculty Availability & Timetable Generator")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🔍 Faculty Availability", 
     "👤 Individual Schedule",
     "🗓️ Weekly Timetable",
+    "🏁 Course Completion Dates",
     "⚡ Auto Timetable Export",
     "🛠️ Custom Generator Form"
 ])
@@ -384,7 +385,9 @@ with tab1:
     min_date = valid_dates[0]
     max_date = valid_dates[-1]
 
-    default_date = datetime.date(2026, 9, 7) if min_date <= datetime.date(2026, 9, 7) <= max_date else min_date
+    # Dynamically select today's date if within semester range
+    today = datetime.date.today()
+    default_date = today if min_date <= today <= max_date else (min_date if today < min_date else max_date)
 
     selected_date = st.date_input(
         "Select Academic Date:",
@@ -477,14 +480,18 @@ with tab3:
 
     week_options = []
     week_data_map = {}
-    for w, days in weeks_dict.items():
+    def_idx = 0
+    today = datetime.date.today()
+
+    for idx, (w, days) in enumerate(weeks_dict.items()):
         d_start = days[0]['date'].strftime('%d %b')
         d_end = days[-1]['date'].strftime('%d %b %Y')
         lbl = f"{w}  ({d_start} - {d_end})"
         week_options.append(lbl)
         week_data_map[lbl] = (w, days)
-
-    def_idx = next((i for i, opt in enumerate(week_options) if "WEEK 11" in opt), 0)
+        # Select current week automatically
+        if any(d['date'] == today for d in days):
+            def_idx = idx
 
     if "selected_cohort" not in st.session_state:
         st.session_state["selected_cohort"] = "UG-Sem 3"
@@ -579,19 +586,83 @@ with tab3:
 
 
 # ==========================================================
-# TAB 4: WORKFLOW A — AUTO TIMETABLE EXPORT FROM EXCEL
+# TAB 4: COURSE COMPLETION DATES (SUBJECT OVER DATE)
 # ==========================================================
 with tab4:
+    st.subheader("🏁 Curriculum Module Completion Tracker")
+    st.caption("Detailed overview of course run dates and final completion dates derived directly from the master academic timetable.")
+
+    COURSE_COMPLETION_DATA = [
+        # Sem 3
+        {"Cohort": "Sem 3", "Subject": "Personality Development", "Start Date": "06 Jul 2026", "Completion Date": "17 Jul 2026", "Status": "Completed"},
+        {"Cohort": "Sem 3", "Subject": "Indian Design System", "Start Date": "06 Jul 2026", "Completion Date": "17 Jul 2026", "Status": "Completed"},
+        {"Cohort": "Sem 3", "Subject": "Product Visualization", "Start Date": "20 Jul 2026", "Completion Date": "14 Aug 2026", "Status": "Completed"},
+        {"Cohort": "Sem 3", "Subject": "Form, Aesthetic and Emotion", "Start Date": "17 Aug 2026", "Completion Date": "03 Sep 2026", "Status": "Completed"},
+        {"Cohort": "Sem 3", "Subject": "Design Research", "Start Date": "07 Sep 2026", "Completion Date": "22 Sep 2026", "Status": "Active"},
+        {"Cohort": "Sem 3", "Subject": "Studio- Human Centric Design", "Start Date": "28 Sep 2026", "Completion Date": "19 Oct 2026", "Status": "Upcoming"},
+        {"Cohort": "Sem 3", "Subject": "Design Articulation with AI", "Start Date": "26 Oct 2026", "Completion Date": "04 Nov 2026", "Status": "Upcoming"},
+
+        # Sem 5
+        {"Cohort": "Sem 5", "Subject": "CAID", "Start Date": "06 Jul 2026", "Completion Date": "10 Jul 2026", "Status": "Completed"},
+        {"Cohort": "Sem 5", "Subject": "Human Factors", "Start Date": "13 Jul 2026", "Completion Date": "03 Aug 2026", "Status": "Completed"},
+        {"Cohort": "Sem 5", "Subject": "The Art of Delightful Design", "Start Date": "17 Aug 2026", "Completion Date": "27 Aug 2026", "Status": "Completed"},
+        {"Cohort": "Sem 5", "Subject": "Studio- Humanizing Technology", "Start Date": "04 Aug 2026", "Completion Date": "08 Sep 2026", "Status": "Completed"},
+        {"Cohort": "Sem 5", "Subject": "Portfolio with AI", "Start Date": "09 Sep 2026", "Completion Date": "23 Oct 2026", "Status": "Active"},
+        {"Cohort": "Sem 5", "Subject": "Experience Design", "Start Date": "28 Sep 2026", "Completion Date": "15 Oct 2026", "Status": "Upcoming"},
+        {"Cohort": "Sem 5", "Subject": "Packaging Design", "Start Date": "28 Sep 2026", "Completion Date": "15 Oct 2026", "Status": "Upcoming"},
+        {"Cohort": "Sem 5", "Subject": "Speculative design", "Start Date": "28 Sep 2026", "Completion Date": "15 Oct 2026", "Status": "Upcoming"},
+
+        # Sem 7
+        {"Cohort": "Sem 7", "Subject": "Internship", "Start Date": "Pre-Semester", "Completion Date": "Self-paced", "Status": "Completed"},
+        {"Cohort": "Sem 7", "Subject": "Design Management", "Start Date": "15 Sep 2026", "Completion Date": "28 Sep 2026", "Status": "Active"},
+        {"Cohort": "Sem 7", "Subject": "Studio: System Analysis and Design", "Start Date": "29 Sep 2026", "Completion Date": "03 Nov 2026", "Status": "Upcoming"},
+
+        # PG Sem 1
+        {"Cohort": "PG Sem 1", "Subject": "Professional Communication", "Start Date": "Pre-Semester", "Completion Date": "Orientation", "Status": "Completed"},
+        {"Cohort": "PG Sem 1", "Subject": "Design Foundation", "Start Date": "03 Aug 2026", "Completion Date": "13 Aug 2026", "Status": "Completed"},
+        {"Cohort": "PG Sem 1", "Subject": "Form Studies", "Start Date": "14 Aug 2026", "Completion Date": "03 Sep 2026", "Status": "Completed"},
+        {"Cohort": "PG Sem 1", "Subject": "Design Studio I", "Start Date": "07 Sep 2026", "Completion Date": "01 Oct 2026", "Status": "Active"},
+        {"Cohort": "PG Sem 1", "Subject": "CAID & Visualization with AI", "Start Date": "05 Oct 2026", "Completion Date": "09 Oct 2026", "Status": "Upcoming"},
+        {"Cohort": "PG Sem 1", "Subject": "Emergent Technology", "Start Date": "12 Oct 2026", "Completion Date": "27 Oct 2026", "Status": "Upcoming"},
+        {"Cohort": "PG Sem 1", "Subject": "Design Prototyping", "Start Date": "28 Oct 2026", "Completion Date": "03 Nov 2026", "Status": "Upcoming"},
+
+        # PG Sem 3
+        {"Cohort": "PG Sem 3", "Subject": "Internship", "Start Date": "Pre-Semester", "Completion Date": "Self-paced", "Status": "Completed"},
+        {"Cohort": "PG Sem 3", "Subject": "Research Methodology", "Start Date": "17 Aug 2026", "Completion Date": "21 Aug 2026", "Status": "Completed"},
+        {"Cohort": "PG Sem 3", "Subject": "Studio- Design and Technology", "Start Date": "24 Aug 2026", "Completion Date": "16 Sep 2026", "Status": "Completed"},
+        {"Cohort": "PG Sem 3", "Subject": "User Experience Design", "Start Date": "17 Sep 2026", "Completion Date": "01 Oct 2026", "Status": "Active"},
+        {"Cohort": "PG Sem 3", "Subject": "Craft and Technology", "Start Date": "08 Oct 2026", "Completion Date": "27 Oct 2026", "Status": "Upcoming"},
+        {"Cohort": "PG Sem 3", "Subject": "Entrepreneurship", "Start Date": "28 Oct 2026", "Completion Date": "05 Nov 2026", "Status": "Upcoming"}
+    ]
+
+    df_comp = pd.DataFrame(COURSE_COMPLETION_DATA)
+
+    c_list = ["All Cohorts", "Sem 3", "Sem 5", "Sem 7", "PG Sem 1", "PG Sem 3"]
+    selected_comp_cohort = st.segmented_control("Filter by Cohort:", options=c_list, default="All Cohorts", key="comp_cohort_filter")
+
+    if selected_comp_cohort != "All Cohorts":
+        df_filtered = df_comp[df_comp["Cohort"] == selected_comp_cohort]
+    else:
+        df_filtered = df_comp
+
+    st.table(df_filtered)
+
+
+# ==========================================================
+# TAB 5: WORKFLOW A — AUTO TIMETABLE EXPORT FROM EXCEL
+# ==========================================================
+with tab5:
     st.subheader("⚡ Auto-Generate Timetable CSV from Master Sheet")
     st.caption("Inspects the master spreadsheet, extracts the exact module and faculty assigned to each section, and maps it directly into ERP CSV format.")
 
+    today = datetime.date.today()
     a_col1, a_col2, a_col3 = st.columns(3)
     with a_col1:
         cohort_choice = st.selectbox("Select Cohort:", ["UG-Sem 3", "UG-Sem 5", "UG-Sem 7", "PG-Sem 1", "PG-Sem 3"])
     with a_col2:
-        auto_start = st.date_input("Start Date", datetime.date(2026, 9, 7), key="auto_start")
+        auto_start = st.date_input("Start Date", today, key="auto_start")
     with a_col3:
-        auto_end = st.date_input("End Date", datetime.date(2026, 9, 11), key="auto_end")
+        auto_end = st.date_input("End Date", today + datetime.timedelta(days=(4 - today.weekday()) if today.weekday() < 5 else 4), key="auto_end")
 
     auto_thu_half = st.checkbox("Thursday Afternoon Off (Slots 3 & 4 off for UG)", value=True, key="auto_thu")
     default_block = st.text_input("Academic Block", value="F", key="auto_block")
@@ -676,9 +747,9 @@ with tab4:
 
 
 # ==========================================================
-# TAB 5: WORKFLOW B — MANUAL / FORM-BASED GENERATOR
+# TAB 6: WORKFLOW B — MANUAL / FORM-BASED GENERATOR
 # ==========================================================
-with tab5:
+with tab6:
     st.subheader("🛠️ Custom / Manual Timetable Generator")
     st.caption("Build and customize a timetable schedule using manual overrides, custom rooms, and configurable slots.")
 
