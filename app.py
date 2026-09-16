@@ -191,6 +191,73 @@ COURSES_DATA = [
     {"code": "32203002612", "title": "Craft and Technology", "sem": "III", "prog_code": "1025", "batch": "3rd Sem M.Des ID 2025-27"},
 ]
 
+# Canonical module lookup & normalization dictionary
+MODULE_ALIASES = {
+    "system design": ("31407006405", "System Analysis and Design with Voice Agents"),
+    "system analysis and design with voice agents": ("31407006405", "System Analysis and Design with Voice Agents"),
+    "system analysis and design": ("31407006405", "System Analysis and Design with Voice Agents"),
+    "dm": ("31407001400", "Design Management"),
+    "design management": ("31407001400", "Design Management"),
+    "studio-humanizing technology": ("31305006324", "Studio- Humanizing Technology"),
+    "studio- humanizing technology": ("31305006324", "Studio- Humanizing Technology"),
+    "humanizing technology": ("31305006324", "Studio- Humanizing Technology"),
+    "studio: design and technology": ("32203002610", "Studio- Design and Technology"),
+    "studio- design and technology": ("32203002610", "Studio- Design and Technology"),
+    "design and technology": ("32203002610", "Studio- Design and Technology"),
+    "ds 1": ("26UDP01020", "Design Studio I"),
+    "design studio i": ("26UDP01020", "Design Studio I"),
+    "design studio 1": ("26UDP01020", "Design Studio I"),
+    "uid common- design research": ("31203001203", "Design Research"),
+    "design research": ("31203001203", "Design Research"),
+    "personality development": ("UC012030001", "Personality Development"),
+    "ku code- personality development": ("UC012030001", "Personality Development"),
+    "art of delightful design": ("31305001328", "The Art of Delightful Design"),
+    "the art of delightful design": ("31305001328", "The Art of Delightful Design"),
+    "portfolio with ai": ("31305006329", "Portfolio with AI"),
+    "human factors": ("31305006322", "Human Factors"),
+    "caid": ("31305006328", "CAID"),
+    "product visualization": ("31203006211", "Product Visualization"),
+    "form, aesthetic and emotion": ("31203006212", "Form, Aesthetic and Emotion"),
+    "studio- human centric design": ("31203006207", "Studio- Human Centric Design"),
+    "design articulation with ai": ("31203006215", "Design Articulation with AI"),
+    "indian design system": ("31203006214", "Indian Design System"),
+    "design foundation": ("26UDP01018", "Design Foundation"),
+    "form studies": ("26UDP01019", "Form Studies"),
+    "caid & visualization with ai": ("26UDP01624", "CAID"),
+    "emergent technology": ("26UDP01123", "Emergent Technology"),
+    "frugal innovation": ("26UDP01122", "Frugal Innovation"),
+    "design prototyping": ("26UDP01421", "Design Prototyping"),
+    "design appreciation & storytelling": ("26UDP01317", "Design Appreciation & Storytelling"),
+    "design appreciation & story telling": ("26UDP01317", "Design Appreciation & Storytelling"),
+    "research methodology": ("32203001604", "Research Methodology"),
+    "user experience design": ("32203002613", "Generative AI for UI & UX Design"),
+    "entrepreneurship": ("32203001603", "Entrepreneurship"),
+    "lighting design": ("32203002611", "Lighting Design"),
+    "craft and technology": ("32203002612", "Craft and Technology"),
+    "experience design": ("31305006325", "Experience Design"),
+    "packaging design": ("31305006326", "Packaging Design"),
+    "speculative design": ("31305006327", "Speculative design")
+}
+
+def resolve_module(raw_name):
+    raw_lower = raw_name.strip().lower()
+    clean_words = " ".join(re.sub(r'[^a-zA-Z0-9\s]', ' ', raw_lower).split())
+    
+    if raw_lower in MODULE_ALIASES:
+        return MODULE_ALIASES[raw_lower]
+        
+    for k, (code, title) in MODULE_ALIASES.items():
+        if k in raw_lower or k in clean_words:
+            return code, title
+            
+    for c in COURSES_DATA:
+        c_title_clean = " ".join(re.sub(r'[^a-zA-Z0-9\s]', ' ', c["title"].lower()).split())
+        if c_title_clean in clean_words or clean_words in c_title_clean:
+            return c["code"], c["title"]
+            
+    return "—", raw_name
+
+
 DEFAULT_FACULTY_LIST = {
     "-- None / Leave Empty --": "",
     "✏️ [Manual / Custom Entry]": "CUSTOM",
@@ -368,7 +435,8 @@ def load_master_data():
                         "morning": None,
                         "afternoon": None,
                         "faculty_name_m": None,
-                        "faculty_name_a": None
+                        "faculty_name_a": None,
+                        "faculties_all_day": []
                     }
 
                 if slot in ['Morning', 'Full Day', 'Lead']:
@@ -377,6 +445,10 @@ def load_master_data():
                 if slot in ['Afternoon', 'Full Day', 'Assisting']:
                     cohort_day_schedule[dt][cohort][sec]["afternoon"] = faculty_code
                     cohort_day_schedule[dt][cohort][sec]["faculty_name_a"] = matched_faculty
+
+                # Record both Lead and Assisting instructors for UG-Sem 7 co-teaching
+                if cohort == "UG-Sem 7" and matched_faculty not in cohort_day_schedule[dt][cohort][sec]["faculties_all_day"]:
+                    cohort_day_schedule[dt][cohort][sec]["faculties_all_day"].append(matched_faculty)
 
     return calendar_cols, official_faculty_list, faculty_day_schedule, cohort_day_schedule
 
@@ -411,7 +483,6 @@ with tab1:
     min_date = valid_dates[0]
     max_date = valid_dates[-1]
 
-    # Dynamically select today's date if within semester range
     today = datetime.date.today()
     default_date = today if min_date <= today <= max_date else (min_date if today < min_date else max_date)
 
@@ -476,25 +547,15 @@ with tab2:
     sched = faculty_schedule.get(selected_fac, {})
 
     if sched:
-        # --- CONTACT HOURS & COURSE BREAKDOWN CALCULATION ENGINE ---
         total_contact_hours = 0.0
         records = []
-        course_stats = {}  # {mod_name: {"days": set(), "hours": 0.0, "code": "—"}}
-
-        def get_course_code(module_name):
-            cleaned_m = module_name.strip().lower()
-            for c in COURSES_DATA:
-                t = c["title"].strip().lower()
-                if t in cleaned_m or cleaned_m in t:
-                    return c["code"]
-            return "—"
+        course_stats = {}  # {(code, canonical_name): {"days": set(), "hours": 0.0}}
 
         for c in calendar_cols:
             dt = c['date']
             if dt in sched:
                 sessions = sched[dt]
 
-                # 1. Determine baseline hours based on cutoff (31 Aug vs 1 Sept)
                 if dt < datetime.date(2026, 9, 1):
                     full_day_hrs = 7.0
                     half_day_hrs = 3.5
@@ -502,17 +563,14 @@ with tab2:
                     full_day_hrs = 6.5
                     half_day_hrs = 3.25
 
-                # 2. Check Thursday UG rule (Starts from 1 August onwards)
                 is_thursday = (dt.weekday() == 3)
                 thu_ug_off = is_thursday and (dt >= datetime.date(2026, 8, 1))
 
-                # 3. Session characteristics
                 has_pg = any("PG-" in s for s in sessions)
-                has_ug_full = any("UG-Sem 7" in s for s in sessions)  # Lead / Assisting
+                has_ug_full = any("UG-Sem 7" in s for s in sessions)
                 has_morning = any("(Morning)" in s for s in sessions)
                 has_afternoon = any("(Afternoon)" in s for s in sessions)
 
-                # Calculate daily contact hours
                 if has_pg:
                     daily_hours = full_day_hrs
                 elif has_ug_full:
@@ -527,23 +585,21 @@ with tab2:
 
                 total_contact_hours += daily_hours
 
-                # 4. Map daily hours per course module
+                # Extract and normalize course module details
                 day_modules = set()
                 for s in sessions:
                     parts = s.split(" - ", 1)
-                    mod = parts[1].strip() if len(parts) > 1 else s.strip()
-                    day_modules.add(mod)
+                    raw_mod = parts[1].strip() if len(parts) > 1 else s.strip()
+                    code, canonical_title = resolve_module(raw_mod)
+                    day_modules.add((code, canonical_title))
 
                 split_hours = daily_hours / len(day_modules) if day_modules else daily_hours
-                for mod in day_modules:
-                    if mod not in course_stats:
-                        course_stats[mod] = {
-                            "days": set(),
-                            "hours": 0.0,
-                            "code": get_course_code(mod)
-                        }
-                    course_stats[mod]["days"].add(dt)
-                    course_stats[mod]["hours"] += split_hours
+                for code, title in day_modules:
+                    key = (code, title)
+                    if key not in course_stats:
+                        course_stats[key] = {"days": set(), "hours": 0.0}
+                    course_stats[key]["days"].add(dt)
+                    course_stats[key]["hours"] += split_hours
 
                 records.append({
                     'Date': dt.strftime('%d-%b-%Y'),
@@ -555,7 +611,7 @@ with tab2:
 
         clean_fac_name = re.sub(r'[^a-zA-Z0-9]', '_', selected_fac)
 
-        # --- TABLE 1: WORKLOAD SUMMARY (Row 1: Days, Row 2: Hours) ---
+        # --- TABLE 1: WORKLOAD SUMMARY ---
         st.markdown(f"#### 📊 Workload Summary for **{selected_fac}**")
         summary_data = [
             {"Metric": "Total Teaching Days", "Value": f"{len(records)} days"},
@@ -566,7 +622,7 @@ with tab2:
 
         csv_summary = df_summary.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label=f"📥 Download Workload Summary (.csv)",
+            label="📥 Download Workload Summary (.csv)",
             data=csv_summary,
             file_name=f"Summary_{clean_fac_name}_ODD_2026.csv",
             mime="text/csv",
@@ -576,12 +632,12 @@ with tab2:
         st.markdown("---")
 
         # --- TABLE 2: COURSE-WISE BREAKDOWN ---
-        st.markdown(f"#### 📚 Course-wise Workload Breakdown")
+        st.markdown("#### 📚 Course-wise Workload Breakdown")
         course_breakdown_rows = []
-        for mod, data in sorted(course_stats.items(), key=lambda x: len(x[1]["days"]), reverse=True):
+        for (code, title), data in sorted(course_stats.items(), key=lambda x: len(x[1]["days"]), reverse=True):
             course_breakdown_rows.append({
-                "Course Code": data["code"],
-                "Course Name": mod,
+                "Course Code": code,
+                "Course Name": title,
                 "Number of Days": f"{len(data['days'])} days",
                 "Teaching Hours": f"{data['hours']:.2f} hrs"
             })
@@ -591,7 +647,7 @@ with tab2:
 
         csv_courses = df_courses.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label=f"📥 Download Course Breakdown (.csv)",
+            label="📥 Download Course Breakdown (.csv)",
             data=csv_courses,
             file_name=f"Course_Breakdown_{clean_fac_name}_ODD_2026.csv",
             mime="text/csv",
@@ -607,7 +663,7 @@ with tab2:
 
         csv_indiv = df_indiv.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label=f"📥 Download Session Breakdown (.csv)",
+            label="📥 Download Session Breakdown (.csv)",
             data=csv_indiv,
             file_name=f"Sessions_{clean_fac_name}_ODD_2026.csv",
             mime="text/csv",
@@ -615,6 +671,7 @@ with tab2:
         )
     else:
         st.info(f"No active teaching assignments found for {selected_fac}.")
+
 
 # ==========================================================
 # TAB 3: WEEKLY CALENDAR TIMETABLE VIEW
@@ -641,7 +698,6 @@ with tab3:
         lbl = f"{w}  ({d_start} - {d_end})"
         week_options.append(lbl)
         week_data_map[lbl] = (w, days)
-        # Select current week automatically based on today's date
         if any(d['date'] == today for d in days):
             def_idx = idx
 
@@ -714,19 +770,32 @@ with tab3:
                 if sec_info:
                     mod_name = sec_info.get("module", "")
                     mod_short = (mod_name[:24] + '...') if len(mod_name) > 24 else mod_name
-                    fac_m = sec_info.get("faculty_name_m") or "—"
-                    fac_a = sec_info.get("faculty_name_a") or "—"
-                    
                     is_thursday_off = (dt.weekday() == 3 and not ch.startswith("PG"))
 
-                    html.append(f'<div class="s-pill s1"><b>S1:</b> {fac_m}<br><small>{mod_short}</small></div>')
-                    html.append(f'<div class="s-pill s2"><b>S2:</b> {fac_m}<br><small>{mod_short}</small></div>')
+                    # Co-teaching logic for UG-Sem 7
+                    if ch == "UG-Sem 7" and sec_info.get("faculties_all_day"):
+                        fac_display = " & ".join(sec_info["faculties_all_day"])
 
-                    if is_thursday_off:
-                        html.append('<div class="s-pill s-off">S3 & S4: Off</div>')
+                        html.append(f'<div class="s-pill s1"><b>S1:</b> {fac_display}<br><small>{mod_short}</small></div>')
+                        html.append(f'<div class="s-pill s2"><b>S2:</b> {fac_display}<br><small>{mod_short}</small></div>')
+
+                        if is_thursday_off:
+                            html.append('<div class="s-pill s-off">S3 & S4: Off</div>')
+                        else:
+                            html.append(f'<div class="s-pill s3"><b>S3:</b> {fac_display}<br><small>{mod_short}</small></div>')
+                            html.append(f'<div class="s-pill s4"><b>S4:</b> {fac_display}<br><small>{mod_short}</small></div>')
                     else:
-                        html.append(f'<div class="s-pill s3"><b>S3:</b> {fac_a}<br><small>{mod_short}</small></div>')
-                        html.append(f'<div class="s-pill s4"><b>S4:</b> {fac_a}<br><small>{mod_short}</small></div>')
+                        fac_m = sec_info.get("faculty_name_m") or "—"
+                        fac_a = sec_info.get("faculty_name_a") or "—"
+
+                        html.append(f'<div class="s-pill s1"><b>S1:</b> {fac_m}<br><small>{mod_short}</small></div>')
+                        html.append(f'<div class="s-pill s2"><b>S2:</b> {fac_m}<br><small>{mod_short}</small></div>')
+
+                        if is_thursday_off:
+                            html.append('<div class="s-pill s-off">S3 & S4: Off</div>')
+                        else:
+                            html.append(f'<div class="s-pill s3"><b>S3:</b> {fac_a}<br><small>{mod_short}</small></div>')
+                            html.append(f'<div class="s-pill s4"><b>S4:</b> {fac_a}<br><small>{mod_short}</small></div>')
                 else:
                     html.append('<div class="s-pill s-off" style="text-align: center; padding: 22px 0;">No Sessions</div>')
 
@@ -780,7 +849,7 @@ with tab4:
 
         # PG Sem 3
         {"Cohort": "PG Sem 3", "Subject": "Internship", "Start Date": "Pre-Semester", "Completion Date": "Self-paced", "RawStatus": "Completed"},
-        {"Cohort": "PG Sem 3", "Subject": "Research Methodology", "Start Date": "17 Aug 2026", "Completion Date": "21 Aug 2026", "Status": "Completed"},
+        {"Cohort": "PG Sem 3", "Subject": "Research Methodology", "Start Date": "17 Aug 2026", "Completion Date": "21 Aug 2026", "RawStatus": "Completed"},
         {"Cohort": "PG Sem 3", "Subject": "Studio- Design and Technology", "Start Date": "24 Aug 2026", "Completion Date": "16 Sep 2026", "RawStatus": "Completed"},
         {"Cohort": "PG Sem 3", "Subject": "User Experience Design", "Start Date": "17 Sep 2026", "Completion Date": "01 Oct 2026", "RawStatus": "Active"},
         {"Cohort": "PG Sem 3", "Subject": "Craft and Technology", "Start Date": "08 Oct 2026", "Completion Date": "27 Oct 2026", "RawStatus": "Upcoming"},
@@ -860,15 +929,16 @@ with tab5:
                         fac_morning = sec_info["morning"]
                         fac_afternoon = sec_info["afternoon"]
 
-                        matched_course = next((c for c in COURSES_DATA if c["title"].lower() in mod_title.lower() or mod_title.lower() in c["title"].lower()), None)
-                        c_code = matched_course["code"] if matched_course else "3120300"
+                        c_code, _ = resolve_module(mod_title)
+                        if c_code == "—":
+                            matched_course = next((c for c in COURSES_DATA if c["title"].lower() in mod_title.lower() or mod_title.lower() in c["title"].lower()), None)
+                            c_code = matched_course["code"] if matched_course else "3120300"
+                        
                         c_type = "MANDATORY"
-
                         erp_info = cohort_erp_defaults.get(cohort_choice, {"prog": "1019", "sem": "III"})
 
                         for s_num in active_slots:
                             assigned_faculty = fac_morning if s_num in [1, 2] else fac_afternoon
-                            # Session 1 & 2 are Practical; Session 3 & 4 are Theory
                             slot_classification = "PRACTICAL" if s_num in [1, 2] else "THEORY"
 
                             extracted_rows.append({
