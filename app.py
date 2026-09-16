@@ -469,26 +469,91 @@ with tab1:
 
 
 # ==========================================================
-# TAB 2: INDIVIDUAL LOOKUP
+# TAB 2: INDIVIDUAL LOOKUP & CONTACT HOURS
 # ==========================================================
 with tab2:
     selected_fac = st.selectbox("Select Faculty Member:", options=official_faculty_list, key="indiv_fac_select")
     sched = faculty_schedule.get(selected_fac, {})
 
     if sched:
-        st.markdown(f"**Total Teaching Days:** `{len(sched)} days`")
+        # --- CONTACT HOURS CALCULATION ENGINE ---
+        total_contact_hours = 0.0
         records = []
+
         for c in calendar_cols:
-            if c['date'] in sched:
+            dt = c['date']
+            if dt in sched:
+                sessions = sched[dt]
+
+                # 1. Determine baseline hours based on cutoff (31 Aug vs 1 Sept)
+                if dt < datetime.date(2026, 9, 1):
+                    full_day_hrs = 7.0
+                    half_day_hrs = 3.5
+                else:
+                    full_day_hrs = 6.5
+                    half_day_hrs = 3.25
+
+                # 2. Check Thursday UG rule (Starts from 1 August onwards)
+                is_thursday = (dt.weekday() == 3)
+                thu_ug_off = is_thursday and (dt >= datetime.date(2026, 8, 1))
+
+                # 3. Session characteristics
+                has_pg = any("PG-" in s for s in sessions)
+                has_ug_full = any("UG-Sem 7" in s for s in sessions)  # Lead / Assisting
+                has_morning = any("(Morning)" in s for s in sessions)
+                has_afternoon = any("(Afternoon)" in s for s in sessions)
+
+                # Calculate daily contact hours
+                if has_pg:
+                    # PG is always full day teaching
+                    daily_hours = full_day_hrs
+                elif has_ug_full:
+                    # UG-Sem 7: Full day, but if Thu >= 1 Aug, afternoon is off
+                    daily_hours = half_day_hrs if thu_ug_off else full_day_hrs
+                else:
+                    # UG-Sem 3 & UG-Sem 5 discrete halves
+                    daily_hours = 0.0
+                    if has_morning:
+                        daily_hours += half_day_hrs
+                    if has_afternoon and not thu_ug_off:
+                        daily_hours += half_day_hrs
+                    daily_hours = min(daily_hours, full_day_hrs)
+
+                total_contact_hours += daily_hours
+
                 records.append({
-                    'Date': c['date'].strftime('%d-%b-%Y'),
+                    'Date': dt.strftime('%d-%b-%Y'),
                     'Week': c['week'],
-                    'Assigned Sessions': "; ".join(sched[c['date']])
+                    'Day': dt.strftime('%A'),
+                    'Daily Contact Hours': f"{daily_hours:.2f} hrs",
+                    'Assigned Sessions': "; ".join(sessions)
                 })
-        st.table(pd.DataFrame(records))
+
+        # --- METRIC SUMMARY TABLE (Row 1: Days, Row 2: Hours) ---
+        st.markdown(f"#### 📊 Workload Summary for **{selected_fac}**")
+        summary_data = [
+            {"Metric": "Total Teaching Days", "Value": f"{len(records)} days"},
+            {"Metric": "Total Contact / Teaching Hours", "Value": f"{total_contact_hours:.2f} hrs"}
+        ]
+        st.table(pd.DataFrame(summary_data))
+
+        # --- DETAILED SCHEDULE TABLE ---
+        st.markdown("#### 📅 Teaching Session Breakdown")
+        df_indiv = pd.DataFrame(records)
+        st.table(df_indiv)
+
+        # --- CSV DOWNLOAD BUTTON ---
+        clean_fac_name = re.sub(r'[^a-zA-Z0-9]', '_', selected_fac)
+        csv_indiv = df_indiv.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label=f"📥 Download Schedule for {selected_fac} (.csv)",
+            data=csv_indiv,
+            file_name=f"Schedule_{clean_fac_name}_ODD_2026.csv",
+            mime="text/csv",
+            key="indiv_download_btn"
+        )
     else:
         st.info(f"No active teaching assignments found for {selected_fac}.")
-
 
 # ==========================================================
 # TAB 3: WEEKLY CALENDAR TIMETABLE VIEW
