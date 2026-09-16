@@ -186,7 +186,7 @@ COURSES_DATA = [
     {"code": "32203001603", "title": "Entrepreneurship", "sem": "III", "prog_code": "1025", "batch": "3rd Sem M.Des ID 2025-27"},
     {"code": "32203001604", "title": "Research Methodology", "sem": "III", "prog_code": "1025", "batch": "3rd Sem M.Des ID 2025-27"},
     {"code": "32203002613", "title": "Generative AI for UI & UX Design", "sem": "III", "prog_code": "1025", "batch": "3rd Sem M.Des ID 2025-27"},
-    {"code": "32203002610", "title": "Studio: Design and Technology", "sem": "III", "prog_code": "1025", "batch": "3rd Sem M.Des ID 2025-27"},
+    {"code": "32203002610", "title": "Studio- Design and Technology", "sem": "III", "prog_code": "1025", "batch": "3rd Sem M.Des ID 2025-27"},
     {"code": "32203002611", "title": "Lighting Design", "sem": "III", "prog_code": "1025", "batch": "3rd Sem M.Des ID 2025-27"},
     {"code": "32203002612", "title": "Craft and Technology", "sem": "III", "prog_code": "1025", "batch": "3rd Sem M.Des ID 2025-27"},
 ]
