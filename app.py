@@ -476,9 +476,18 @@ with tab2:
     sched = faculty_schedule.get(selected_fac, {})
 
     if sched:
-        # --- CONTACT HOURS CALCULATION ENGINE ---
+        # --- CONTACT HOURS & COURSE BREAKDOWN CALCULATION ENGINE ---
         total_contact_hours = 0.0
         records = []
+        course_stats = {}  # {mod_name: {"days": set(), "hours": 0.0, "code": "—"}}
+
+        def get_course_code(module_name):
+            cleaned_m = module_name.strip().lower()
+            for c in COURSES_DATA:
+                t = c["title"].strip().lower()
+                if t in cleaned_m or cleaned_m in t:
+                    return c["code"]
+            return "—"
 
         for c in calendar_cols:
             dt = c['date']
@@ -505,13 +514,10 @@ with tab2:
 
                 # Calculate daily contact hours
                 if has_pg:
-                    # PG is always full day teaching
                     daily_hours = full_day_hrs
                 elif has_ug_full:
-                    # UG-Sem 7: Full day, but if Thu >= 1 Aug, afternoon is off
                     daily_hours = half_day_hrs if thu_ug_off else full_day_hrs
                 else:
-                    # UG-Sem 3 & UG-Sem 5 discrete halves
                     daily_hours = 0.0
                     if has_morning:
                         daily_hours += half_day_hrs
@@ -521,6 +527,24 @@ with tab2:
 
                 total_contact_hours += daily_hours
 
+                # 4. Map daily hours per course module
+                day_modules = set()
+                for s in sessions:
+                    parts = s.split(" - ", 1)
+                    mod = parts[1].strip() if len(parts) > 1 else s.strip()
+                    day_modules.add(mod)
+
+                split_hours = daily_hours / len(day_modules) if day_modules else daily_hours
+                for mod in day_modules:
+                    if mod not in course_stats:
+                        course_stats[mod] = {
+                            "days": set(),
+                            "hours": 0.0,
+                            "code": get_course_code(mod)
+                        }
+                    course_stats[mod]["days"].add(dt)
+                    course_stats[mod]["hours"] += split_hours
+
                 records.append({
                     'Date': dt.strftime('%d-%b-%Y'),
                     'Week': c['week'],
@@ -529,26 +553,63 @@ with tab2:
                     'Assigned Sessions': "; ".join(sessions)
                 })
 
-        # --- METRIC SUMMARY TABLE (Row 1: Days, Row 2: Hours) ---
+        clean_fac_name = re.sub(r'[^a-zA-Z0-9]', '_', selected_fac)
+
+        # --- TABLE 1: WORKLOAD SUMMARY (Row 1: Days, Row 2: Hours) ---
         st.markdown(f"#### 📊 Workload Summary for **{selected_fac}**")
         summary_data = [
             {"Metric": "Total Teaching Days", "Value": f"{len(records)} days"},
             {"Metric": "Total Contact / Teaching Hours", "Value": f"{total_contact_hours:.2f} hrs"}
         ]
-        st.table(pd.DataFrame(summary_data))
+        df_summary = pd.DataFrame(summary_data)
+        st.table(df_summary)
 
-        # --- DETAILED SCHEDULE TABLE ---
+        csv_summary = df_summary.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label=f"📥 Download Workload Summary (.csv)",
+            data=csv_summary,
+            file_name=f"Summary_{clean_fac_name}_ODD_2026.csv",
+            mime="text/csv",
+            key="summary_download_btn"
+        )
+
+        st.markdown("---")
+
+        # --- TABLE 2: COURSE-WISE BREAKDOWN ---
+        st.markdown(f"#### 📚 Course-wise Workload Breakdown")
+        course_breakdown_rows = []
+        for mod, data in sorted(course_stats.items(), key=lambda x: len(x[1]["days"]), reverse=True):
+            course_breakdown_rows.append({
+                "Course Code": data["code"],
+                "Course Name": mod,
+                "Number of Days": f"{len(data['days'])} days",
+                "Teaching Hours": f"{data['hours']:.2f} hrs"
+            })
+
+        df_courses = pd.DataFrame(course_breakdown_rows)
+        st.table(df_courses)
+
+        csv_courses = df_courses.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label=f"📥 Download Course Breakdown (.csv)",
+            data=csv_courses,
+            file_name=f"Course_Breakdown_{clean_fac_name}_ODD_2026.csv",
+            mime="text/csv",
+            key="course_download_btn"
+        )
+
+        st.markdown("---")
+
+        # --- TABLE 3: DETAILED SESSION BREAKDOWN ---
         st.markdown("#### 📅 Teaching Session Breakdown")
         df_indiv = pd.DataFrame(records)
         st.table(df_indiv)
 
-        # --- CSV DOWNLOAD BUTTON ---
-        clean_fac_name = re.sub(r'[^a-zA-Z0-9]', '_', selected_fac)
         csv_indiv = df_indiv.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label=f"📥 Download Schedule for {selected_fac} (.csv)",
+            label=f"📥 Download Session Breakdown (.csv)",
             data=csv_indiv,
-            file_name=f"Schedule_{clean_fac_name}_ODD_2026.csv",
+            file_name=f"Sessions_{clean_fac_name}_ODD_2026.csv",
             mime="text/csv",
             key="indiv_download_btn"
         )
