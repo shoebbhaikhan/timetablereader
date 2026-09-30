@@ -191,7 +191,6 @@ COURSES_DATA = [
     {"code": "32203002612", "title": "Craft and Technology", "sem": "III", "prog_code": "1025", "batch": "3rd Sem M.Des ID 2025-27"},
 ]
 
-# Canonical module lookup & normalization dictionary
 MODULE_ALIASES = {
     "system design": ("31407006405", "System Analysis and Design with Voice Agents"),
     "system analysis and design with voice agents": ("31407006405", "System Analysis and Design with Voice Agents"),
@@ -327,32 +326,50 @@ def load_master_data():
             
     official_faculty_list = sorted(list(set(official_faculty_list)))
     
-    sheet_name = 'Morning_Afternoon Updated_Timet' if 'Morning_Afternoon Updated_Timet' in wb.sheetnames else wb.sheetnames[0]
-    ws = wb[sheet_name]
+    # Resilient timetable sheet identification
+    target_sheet = "Morning_Afternoon Updated_Timet"
+    matched_sheet_name = next(
+        (s for s in wb.sheetnames if target_sheet.lower() in s.lower().strip()),
+        None
+    )
+    if not matched_sheet_name:
+        matched_sheet_name = wb.sheetnames[1] if len(wb.sheetnames) > 1 else wb.sheetnames[0]
 
-    month_map = {'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12}
+    ws = wb[matched_sheet_name]
+
+    month_map = {
+        'jul': 7, 'july': 7,
+        'aug': 8, 'august': 8,
+        'sep': 9, 'sept': 9, 'september': 9,
+        'oct': 10, 'october': 10,
+        'nov': 11, 'november': 11,
+        'dec': 12, 'december': 12
+    }
     calendar_cols = []
 
-    for col in range(2, ws.max_column + 1):
+    for col in range(1, ws.max_column + 1):
         m_val = ws.cell(3, col).value
         d_val = ws.cell(4, col).value
         w_val = ws.cell(5, col).value
 
-        if d_val is not None and str(d_val).strip() not in ['', 'None', 'Date']:
-            try:
-                day_int = int(float(d_val))
-                m_str = str(m_val).strip()
-                if m_str in month_map:
+        if d_val is not None:
+            d_str = str(d_val).strip().split('.')[0]
+            if d_str.isdigit():
+                day_int = int(d_str)
+                m_str = str(m_val or "").strip().lower()
+                matched_month = next((month_map[k] for k in month_map if k in m_str), None)
+                if matched_month:
                     w_str = str(w_val).strip() if w_val else "Week"
-                    d_obj = datetime.date(2026, month_map[m_str], day_int)
-                    calendar_cols.append({
-                        'col': col,
-                        'date': d_obj,
-                        'week': w_str,
-                        'label': f"{d_obj.strftime('%a, %d %b %Y')} ({w_str})"
-                    })
-            except Exception:
-                continue
+                    try:
+                        d_obj = datetime.date(2026, matched_month, day_int)
+                        calendar_cols.append({
+                            'col': col,
+                            'date': d_obj,
+                            'week': w_str,
+                            'label': f"{d_obj.strftime('%a, %d %b %Y')} ({w_str})"
+                        })
+                    except ValueError:
+                        continue
 
     teaching_rows = [
         # UG-Sem 3
@@ -450,11 +467,11 @@ def load_master_data():
                 if cohort == "UG-Sem 7" and matched_faculty not in cohort_day_schedule[dt][cohort][sec]["faculties_all_day"]:
                     cohort_day_schedule[dt][cohort][sec]["faculties_all_day"].append(matched_faculty)
 
-    return calendar_cols, official_faculty_list, faculty_day_schedule, cohort_day_schedule
+    return calendar_cols, official_faculty_list, faculty_day_schedule, cohort_day_schedule, ws
 
 
 try:
-    calendar_cols, official_faculty_list, faculty_schedule, cohort_day_schedule = load_master_data()
+    calendar_cols, official_faculty_list, faculty_schedule, cohort_day_schedule, ws = load_master_data()
 except Exception as e:
     st.error(f"Error loading master dataset: {e}")
     st.stop()
@@ -462,11 +479,12 @@ except Exception as e:
 st.title("UID Department of Industrial Design")
 st.caption("Master Academic Schedule, Faculty Availability & Timetable Generator")
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "🔍 Faculty Availability", 
     "👤 Individual Schedule",
     "🗓️ Weekly Timetable",
     "🏁 Course Completion Dates",
+    "📈 Subject Hours & Progress",
     "⚡ Auto Timetable Export",
     "🛠️ Custom Generator Form"
 ])
@@ -476,6 +494,10 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 # TAB 1: AVAILABILITY ENGINE
 # ==========================================================
 with tab1:
+    if not calendar_cols:
+        st.error("⚠️ No academic calendar dates could be parsed from the uploaded spreadsheet. Please ensure row 3 contains month names and row 4 contains days.")
+        st.stop()
+
     excluded_faculties = set(get_excluded_faculty())
 
     date_to_week = {c['date']: c['week'] for c in calendar_cols}
@@ -549,7 +571,7 @@ with tab2:
     if sched:
         total_contact_hours = 0.0
         records = []
-        course_stats = {}  # {(code, canonical_name): {"days": set(), "hours": 0.0}}
+        course_stats = {}
 
         for c in calendar_cols:
             dt = c['date']
@@ -585,7 +607,6 @@ with tab2:
 
                 total_contact_hours += daily_hours
 
-                # Extract and normalize course module details
                 day_modules = set()
                 for s in sessions:
                     parts = s.split(" - ", 1)
@@ -849,7 +870,7 @@ with tab4:
 
         # PG Sem 3
         {"Cohort": "PG Sem 3", "Subject": "Internship", "Start Date": "Pre-Semester", "Completion Date": "Self-paced", "RawStatus": "Completed"},
-        {"Cohort": "PG Sem 3", "Subject": "Research Methodology", "Start Date": "17 Aug 2026", "Completion Date": "21 Aug 2026", "RawStatus": "Completed"},
+        {"Cohort": "PG Sem 3", "Subject": "Research Methodology", "Start Date": "17 Aug 2026", "Completion Date": "21 Aug 2026", "Status": "Completed"},
         {"Cohort": "PG Sem 3", "Subject": "Studio- Design and Technology", "Start Date": "24 Aug 2026", "Completion Date": "16 Sep 2026", "RawStatus": "Completed"},
         {"Cohort": "PG Sem 3", "Subject": "User Experience Design", "Start Date": "17 Sep 2026", "Completion Date": "01 Oct 2026", "RawStatus": "Active"},
         {"Cohort": "PG Sem 3", "Subject": "Craft and Technology", "Start Date": "08 Oct 2026", "Completion Date": "27 Oct 2026", "RawStatus": "Upcoming"},
@@ -881,9 +902,167 @@ with tab4:
 
 
 # ==========================================================
-# TAB 5: WORKFLOW A — AUTO TIMETABLE EXPORT FROM EXCEL
+# TAB 5: SUBJECT TEACHING HOURS & PROGRESS TRACKER
 # ==========================================================
 with tab5:
+    st.subheader("📈 Subject Hours: Completed vs Needed in Semester")
+    st.caption("Tracks total teaching hours delivered to date against the total prescribed hours per semester from the curriculum credit structure.")
+
+    SUBJECT_HOURS_MASTER = [
+        # 3rd Sem UG
+        {"Cohort": "Sem 3", "Code": "UC012030001", "Subject": "Personality Development", "Hours Needed": 30.0, "Keywords": ["personality development"], "HalfDay": True},
+        {"Cohort": "Sem 3", "Code": "31203006214", "Subject": "Indian Design System", "Hours Needed": 30.0, "Keywords": ["indian design system"], "HalfDay": True},
+        {"Cohort": "Sem 3", "Code": "31203006211", "Subject": "Product Visualization", "Hours Needed": 120.0, "Keywords": ["product visualization"], "HalfDay": False},
+        {"Cohort": "Sem 3", "Code": "31203006212", "Subject": "Form, Aesthetic and Emotion", "Hours Needed": 75.0, "Keywords": ["form, aesthetic and emotion"], "HalfDay": False},
+        {"Cohort": "Sem 3", "Code": "31203001203", "Subject": "Design Research", "Hours Needed": 60.0, "Keywords": ["design research"], "HalfDay": False},
+        {"Cohort": "Sem 3", "Code": "31203006207", "Subject": "Studio- Human Centric Design", "Hours Needed": 90.0, "Keywords": ["studio- human centric design", "human centric design"], "HalfDay": False},
+        {"Cohort": "Sem 3", "Code": "31203006213", "Subject": "Design Articulation with AI", "Hours Needed": 45.0, "Keywords": ["design articulation with ai", "design articulation"], "HalfDay": False},
+
+        # 5th Sem UG
+        {"Cohort": "Sem 5", "Code": "UC013050001", "Subject": "CAID", "Hours Needed": 30.0, "Keywords": ["caid"], "HalfDay": False},
+        {"Cohort": "Sem 5", "Code": "31305001330", "Subject": "The Art of Delightful Design", "Hours Needed": 60.0, "Keywords": ["art of delightful design", "delightful design"], "HalfDay": False},
+        {"Cohort": "Sem 5", "Code": "31305006322", "Subject": "Human Factors", "Hours Needed": 90.0, "Keywords": ["human factors"], "HalfDay": False},
+        {"Cohort": "Sem 5", "Code": "31305006324", "Subject": "Studio- Humanizing Technology", "Hours Needed": 105.0, "Keywords": ["humanizing technology"], "HalfDay": False},
+        {"Cohort": "Sem 5", "Code": "31305006329", "Subject": "Portfolio Design with Voice Agents / Portfolio with AI", "Hours Needed": 75.0, "Keywords": ["portfolio with ai", "portfolio design"], "HalfDay": False},
+        {"Cohort": "Sem 5", "Code": "31305006325", "Subject": "Experience Design", "Hours Needed": 90.0, "Keywords": ["experience design"], "HalfDay": False},
+        {"Cohort": "Sem 5", "Code": "31305006326", "Subject": "Packaging Design", "Hours Needed": 90.0, "Keywords": ["packaging design"], "HalfDay": False},
+        {"Cohort": "Sem 5", "Code": "31305006327", "Subject": "Speculative design", "Hours Needed": 90.0, "Keywords": ["speculative design"], "HalfDay": False},
+
+        # 7th Sem UG
+        {"Cohort": "Sem 7", "Code": "31407001400", "Subject": "Design Management", "Hours Needed": 45.0, "Keywords": ["design management", "dm"], "HalfDay": False},
+        {"Cohort": "Sem 7", "Code": "31407006403", "Subject": "Internship", "Hours Needed": 240.0, "Keywords": ["internship"], "HalfDay": False},
+        {"Cohort": "Sem 7", "Code": "31407006405", "Subject": "System Analysis and Design with Voice Agents", "Hours Needed": 165.0, "Keywords": ["system analysis and design", "system design"], "HalfDay": False},
+
+        # 1st Sem PG
+        {"Cohort": "PG Sem 1", "Code": "32101001500", "Subject": "Professional Communication", "Hours Needed": 30.0, "Keywords": ["professional communication", "communication"], "HalfDay": False},
+        {"Cohort": "PG Sem 1", "Code": "32101002501", "Subject": "Design Foundation", "Hours Needed": 60.0, "Keywords": ["design foundation"], "HalfDay": False},
+        {"Cohort": "PG Sem 1", "Code": "32101002502", "Subject": "Form Studies", "Hours Needed": 90.0, "Keywords": ["form studies"], "HalfDay": False},
+        {"Cohort": "PG Sem 1", "Code": "32101002503", "Subject": "Design Studio I", "Hours Needed": 120.0, "Keywords": ["design studio i", "ds 1", "design studio 1"], "HalfDay": False},
+        {"Cohort": "PG Sem 1", "Code": "32101002507", "Subject": "CAID & Visualization with AI", "Hours Needed": 45.0, "Keywords": ["caid & visualization with ai", "visualization with ai"], "HalfDay": False},
+        {"Cohort": "PG Sem 1", "Code": "32101002505", "Subject": "Frugal Innovation", "Hours Needed": 75.0, "Keywords": ["frugal innovation"], "HalfDay": False},
+        {"Cohort": "PG Sem 1", "Code": "32101002506", "Subject": "Emergent Technology", "Hours Needed": 75.0, "Keywords": ["emergent technology"], "HalfDay": False},
+        {"Cohort": "PG Sem 1", "Code": "32101002504", "Subject": "Design Prototyping", "Hours Needed": 30.0, "Keywords": ["design prototyping"], "HalfDay": False},
+
+        # 3rd Sem PG
+        {"Cohort": "PG Sem 3", "Code": "32203001602", "Subject": "Internship", "Hours Needed": 120.0, "Keywords": ["internship"], "HalfDay": False},
+        {"Cohort": "PG Sem 3", "Code": "32203001604", "Subject": "Research Methodology", "Hours Needed": 30.0, "Keywords": ["research methodology"], "HalfDay": False},
+        {"Cohort": "PG Sem 3", "Code": "32203002610", "Subject": "Studio- Design and Technology", "Hours Needed": 90.0, "Keywords": ["studio- design and technology", "studio: design and technology", "design and technology"], "HalfDay": False},
+        {"Cohort": "PG Sem 3", "Code": "32203002609", "Subject": "User Experience Design", "Hours Needed": 60.0, "Keywords": ["user experience design", "ux design"], "HalfDay": False},
+        {"Cohort": "PG Sem 3", "Code": "32203002611", "Subject": "Lighting Design", "Hours Needed": 90.0, "Keywords": ["lighting design"], "HalfDay": False},
+        {"Cohort": "PG Sem 3", "Code": "32203002612", "Subject": "Craft and Technology", "Hours Needed": 90.0, "Keywords": ["craft and technology"], "HalfDay": False},
+        {"Cohort": "PG Sem 3", "Code": "32203001603", "Subject": "Entrepreneurship", "Hours Needed": 60.0, "Keywords": ["entrepreneurship"], "HalfDay": False}
+    ]
+
+    cohort_row_map = {
+        "Sem 3": [8, 9, 10],
+        "Sem 5": [30],
+        "Sem 7": [48],
+        "PG Sem 1": [62],
+        "PG Sem 3": [71]
+    }
+
+    current_date = datetime.date.today()
+    subject_progress_records = []
+
+    for item in SUBJECT_HOURS_MASTER:
+        cohort = item["Cohort"]
+        kws = item["Keywords"]
+        needed_hrs = item["Hours Needed"]
+        is_half_day = item["HalfDay"]
+        rows_to_check = cohort_row_map.get(cohort, [8])
+
+        teaching_days_done = 0
+        hours_done = 0.0
+        total_scheduled_hrs = 0.0
+
+        for c_info in calendar_cols:
+            col_idx = c_info['col']
+            dt = c_info['date']
+
+            matched = False
+            for r in rows_to_check:
+                val = str(ws.cell(r, col_idx).value or "").lower()
+                if any(k in val for k in kws):
+                    matched = True
+                    break
+
+            if matched:
+                if dt < datetime.date(2026, 9, 1):
+                    f_hrs, h_hrs = 7.0, 3.5
+                else:
+                    f_hrs, h_hrs = 6.5, 3.25
+
+                is_thu = (dt.weekday() == 3)
+                thu_ug_off = is_thu and (dt >= datetime.date(2026, 8, 1)) and not cohort.startswith("PG")
+
+                if cohort.startswith("PG"):
+                    day_hrs = f_hrs
+                elif is_half_day:
+                    day_hrs = h_hrs
+                elif thu_ug_off:
+                    day_hrs = h_hrs
+                else:
+                    day_hrs = f_hrs
+
+                total_scheduled_hrs += day_hrs
+                if dt <= current_date:
+                    hours_done += day_hrs
+                    teaching_days_done += 1
+
+        remaining_hrs = max(0.0, needed_hrs - hours_done)
+        pct_done = min(100.0, (hours_done / needed_hrs * 100)) if needed_hrs > 0 else 0.0
+
+        if pct_done >= 100.0:
+            status_html = '<span class="status-badge status-completed">Completed</span>'
+        elif pct_done > 0.0:
+            status_html = '<span class="status-badge status-active">In Progress</span>'
+        else:
+            status_html = '<span class="status-badge status-upcoming">Pending</span>'
+
+        subject_progress_records.append({
+            "Cohort": cohort,
+            "Course Code": item["Code"],
+            "Course Name": item["Subject"],
+            "Hours Done": f"{hours_done:.1f} hrs",
+            "Hours Needed": f"{needed_hrs:.1f} hrs",
+            "Remaining": f"{remaining_hrs:.1f} hrs",
+            "Progress": f"{pct_done:.1f}%",
+            "Status": status_html,
+            "_raw_cohort": cohort
+        })
+
+    df_prog = pd.DataFrame(subject_progress_records)
+
+    cohort_options = ["All Cohorts", "Sem 3", "Sem 5", "Sem 7", "PG Sem 1", "PG Sem 3"]
+    selected_cohort_filter = st.segmented_control(
+        "Filter by Semester:",
+        options=cohort_options,
+        default="All Cohorts",
+        key="prog_cohort_filter"
+    )
+
+    if selected_cohort_filter != "All Cohorts":
+        df_filtered_prog = df_prog[df_prog["_raw_cohort"] == selected_cohort_filter]
+    else:
+        df_filtered_prog = df_prog
+
+    cols_to_show = ["Cohort", "Course Code", "Course Name", "Hours Done", "Hours Needed", "Remaining", "Progress", "Status"]
+    st.write(df_filtered_prog[cols_to_show].to_html(escape=False, index=False), unsafe_allow_html=True)
+
+    csv_prog = df_filtered_prog[["Cohort", "Course Code", "Course Name", "Hours Done", "Hours Needed", "Remaining", "Progress"]].to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Download Subject Hours Progress (.csv)",
+        data=csv_prog,
+        file_name=f"Subject_Hours_Progress_{current_date}.csv",
+        mime="text/csv",
+        key="prog_download_btn"
+    )
+
+
+# ==========================================================
+# TAB 6: WORKFLOW A — AUTO TIMETABLE EXPORT FROM EXCEL
+# ==========================================================
+with tab6:
     st.subheader("⚡ Auto-Generate Timetable CSV from Master Sheet")
     st.caption("Inspects the master spreadsheet, extracts the exact module and faculty assigned to each section, and maps it directly into ERP CSV format.")
 
@@ -980,9 +1159,9 @@ with tab5:
 
 
 # ==========================================================
-# TAB 6: WORKFLOW B — MANUAL / FORM-BASED GENERATOR
+# TAB 7: WORKFLOW B — MANUAL / FORM-BASED GENERATOR
 # ==========================================================
-with tab6:
+with tab7:
     st.subheader("🛠️ Custom / Manual Timetable Generator")
     st.caption("Build and customize a timetable schedule using manual overrides, custom rooms, and configurable slots.")
 
