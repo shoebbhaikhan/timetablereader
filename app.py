@@ -118,14 +118,34 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-def get_excluded_faculty():
+def get_excluded_faculty(target_date=None):
+    """
+    Returns a set of faculty names excluded on target_date.
+    Supports plain string entries (permanent) or dicts with 'end_date' (YYYY-MM-DD).
+    """
     if os.path.exists(EXCLUSION_FILE):
         try:
             with open(EXCLUSION_FILE, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                excluded = set()
+                for entry in data:
+                    if isinstance(entry, str):
+                        excluded.add(entry)
+                    elif isinstance(entry, dict) and "name" in entry:
+                        end_date_str = entry.get("end_date")
+                        if end_date_str and target_date:
+                            try:
+                                end_dt = datetime.date.fromisoformat(end_date_str)
+                                if target_date > end_dt:
+                                    excluded.add(entry["name"])
+                            except ValueError:
+                                excluded.add(entry["name"])
+                        else:
+                            excluded.add(entry["name"])
+                return excluded
         except Exception:
-            return []
-    return []
+            return set()
+    return set()
 
 
 COURSES_DATA = [
@@ -479,9 +499,10 @@ except Exception as e:
 st.title("UID Department of Industrial Design")
 st.caption("Master Academic Schedule, Faculty Availability & Timetable Generator")
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "🔍 Faculty Availability", 
     "👤 Individual Schedule",
+    "📋 Faculty Course Workload",
     "🗓️ Weekly Timetable",
     "🏁 Course Completion Dates",
     "📈 Subject Hours & Progress",
@@ -498,8 +519,6 @@ with tab1:
         st.error("⚠️ No academic calendar dates could be parsed from the uploaded spreadsheet. Please ensure row 3 contains month names and row 4 contains days.")
         st.stop()
 
-    excluded_faculties = set(get_excluded_faculty())
-
     date_to_week = {c['date']: c['week'] for c in calendar_cols}
     valid_dates = [c['date'] for c in calendar_cols]
     min_date = valid_dates[0]
@@ -515,6 +534,9 @@ with tab1:
         max_value=max_date,
         key="avail_date_picker"
     )
+
+    # Date-aware exclusion check (e.g. Mithil Suresh excluded after 10 Oct)
+    excluded_faculties = get_excluded_faculty(target_date=selected_date)
 
     current_week = date_to_week.get(selected_date, "Non-Instructional / Holiday")
 
@@ -695,9 +717,174 @@ with tab2:
 
 
 # ==========================================================
-# TAB 3: WEEKLY CALENDAR TIMETABLE VIEW
+# TAB 3: FACULTY COURSE WORKLOAD & GRAND TOTALS
 # ==========================================================
 with tab3:
+    st.subheader("📋 Faculty-Wise Subject Allocations & Totals")
+    st.caption("Itemized list of all subjects taught by faculty members with total teaching days, contact hours, and grand totals.")
+
+    view_mode = st.radio(
+        "Select View Mode:",
+        ["Individual Faculty Breakdown", "All Faculty Consolidated Master View"],
+        horizontal=True,
+        key="fac_wl_view_mode"
+    )
+
+    def compute_faculty_course_stats(fac_name):
+        """Calculates days and contact hours per subject for a specific faculty member."""
+        sched_data = faculty_schedule.get(fac_name, {})
+        stats = {}  # {(code, title): {"days": set(), "hours": 0.0}}
+
+        for c_info in calendar_cols:
+            dt = c_info['date']
+            if dt in sched_data:
+                sessions = sched_data[dt]
+
+                if dt < datetime.date(2026, 9, 1):
+                    full_day_hrs = 7.0
+                    half_day_hrs = 3.5
+                else:
+                    full_day_hrs = 6.5
+                    half_day_hrs = 3.25
+
+                is_thu = (dt.weekday() == 3)
+                thu_ug_off = is_thu and (dt >= datetime.date(2026, 8, 1))
+
+                has_pg = any("PG-" in s for s in sessions)
+                has_ug_full = any("UG-Sem 7" in s for s in sessions)
+                has_m = any("(Morning)" in s for s in sessions)
+                has_a = any("(Afternoon)" in s for s in sessions)
+
+                if has_pg:
+                    daily_hrs = full_day_hrs
+                elif has_ug_full:
+                    daily_hrs = half_day_hrs if thu_ug_off else full_day_hrs
+                else:
+                    daily_hrs = 0.0
+                    if has_m:
+                        daily_hrs += half_day_hrs
+                    if has_a and not thu_ug_off:
+                        daily_hrs += half_day_hrs
+                    daily_hrs = min(daily_hrs, full_day_hrs)
+
+                day_courses = set()
+                for s in sessions:
+                    parts = s.split(" - ", 1)
+                    raw_mod = parts[1].strip() if len(parts) > 1 else s.strip()
+                    code, title = resolve_module(raw_mod)
+                    day_courses.add((code, title))
+
+                split_hrs = daily_hrs / len(day_courses) if day_courses else daily_hrs
+                for code, title in day_courses:
+                    key = (code, title)
+                    if key not in stats:
+                        stats[key] = {"days": set(), "hours": 0.0}
+                    stats[key]["days"].add(dt)
+                    stats[key]["hours"] += split_hrs
+
+        return stats
+
+    if view_mode == "Individual Faculty Breakdown":
+        selected_fac_wl = st.selectbox(
+            "Select Faculty Member:",
+            options=official_faculty_list,
+            key="fac_wl_dropdown"
+        )
+
+        course_stats = compute_faculty_course_stats(selected_fac_wl)
+
+        if course_stats:
+            rows = []
+            all_unique_days = set()
+            total_hours = 0.0
+
+            for (code, title), data in sorted(course_stats.items(), key=lambda x: len(x[1]["days"]), reverse=True):
+                n_days = len(data["days"])
+                hrs = data["hours"]
+                all_unique_days.update(data["days"])
+                total_hours += hrs
+
+                rows.append({
+                    "Course Code": code,
+                    "Course Name": title,
+                    "Teaching Days": f"{n_days} days",
+                    "Teaching Hours": f"{hrs:.2f} hrs"
+                })
+
+            # Append the summary TOTAL row
+            rows.append({
+                "Course Code": "—",
+                "Course Name": "TOTAL",
+                "Teaching Days": f"{len(all_unique_days)} days",
+                "Teaching Hours": f"{total_hours:.2f} hrs"
+            })
+
+            df_single_wl = pd.DataFrame(rows)
+            st.table(df_single_wl)
+
+            clean_name = re.sub(r'[^a-zA-Z0-9]', '_', selected_fac_wl)
+            csv_single_wl = df_single_wl.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label=f"📥 Download Workload Table for {selected_fac_wl} (.csv)",
+                data=csv_single_wl,
+                file_name=f"Faculty_Courses_{clean_name}.csv",
+                mime="text/csv",
+                key="download_single_fac_wl"
+            )
+        else:
+            st.info(f"No scheduled courses found for {selected_fac_wl}.")
+
+    else:
+        # Department-wide Master Table
+        all_rows = []
+        for fac in official_faculty_list:
+            c_stats = compute_faculty_course_stats(fac)
+            if not c_stats:
+                continue
+
+            fac_unique_days = set()
+            fac_total_hrs = 0.0
+
+            for (code, title), data in sorted(c_stats.items(), key=lambda x: len(x[1]["days"]), reverse=True):
+                fac_unique_days.update(data["days"])
+                fac_total_hrs += data["hours"]
+                all_rows.append({
+                    "Faculty Name": fac,
+                    "Course Code": code,
+                    "Course Name": title,
+                    "Teaching Days": len(data["days"]),
+                    "Teaching Hours": round(data["hours"], 2)
+                })
+
+            # Total row per faculty
+            all_rows.append({
+                "Faculty Name": f"TOTAL: {fac}",
+                "Course Code": "—",
+                "Course Name": "—",
+                "Teaching Days": len(fac_unique_days),
+                "Teaching Hours": round(fac_total_hrs, 2)
+            })
+
+        if all_rows:
+            df_all_wl = pd.DataFrame(all_rows)
+            st.dataframe(df_all_wl, use_container_width=True, height=600)
+
+            csv_all_wl = df_all_wl.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Department-Wide Master Allocation (.csv)",
+                data=csv_all_wl,
+                file_name="Department_Faculty_Course_Workload_Master.csv",
+                mime="text/csv",
+                key="download_all_fac_wl"
+            )
+        else:
+            st.warning("No workload allocations found across faculty members.")
+
+
+# ==========================================================
+# TAB 4: WEEKLY CALENDAR TIMETABLE VIEW
+# ==========================================================
+with tab4:
     st.subheader("🗓️ Weekly Department Timetable")
     st.caption("Comprehensive weekly grid displaying all sections with Sessions 1–4 color-coded.")
 
@@ -828,9 +1015,9 @@ with tab3:
 
 
 # ==========================================================
-# TAB 4: COURSE COMPLETION DATES (SUBJECT OVER DATE)
+# TAB 5: COURSE COMPLETION DATES (SUBJECT OVER DATE)
 # ==========================================================
-with tab4:
+with tab5:
     st.subheader("🏁 Curriculum Module Completion Tracker")
     st.caption("Detailed overview of course run dates and final completion dates derived directly from the master academic timetable.")
 
@@ -902,9 +1089,9 @@ with tab4:
 
 
 # ==========================================================
-# TAB 5: SUBJECT TEACHING HOURS & PROGRESS TRACKER
+# TAB 6: SUBJECT TEACHING HOURS & PROGRESS TRACKER
 # ==========================================================
-with tab5:
+with tab6:
     st.subheader("📈 Subject Hours: Completed vs Needed in Semester")
     st.caption("Tracks total teaching hours delivered to date against the total prescribed hours per semester from the curriculum credit structure.")
 
@@ -1060,9 +1247,9 @@ with tab5:
 
 
 # ==========================================================
-# TAB 6: WORKFLOW A — AUTO TIMETABLE EXPORT FROM EXCEL
+# TAB 7: WORKFLOW A — AUTO TIMETABLE EXPORT FROM EXCEL
 # ==========================================================
-with tab6:
+with tab7:
     st.subheader("⚡ Auto-Generate Timetable CSV from Master Sheet")
     st.caption("Inspects the master spreadsheet, extracts the exact module and faculty assigned to each section, and maps it directly into ERP CSV format.")
 
@@ -1159,9 +1346,9 @@ with tab6:
 
 
 # ==========================================================
-# TAB 7: WORKFLOW B — MANUAL / FORM-BASED GENERATOR
+# TAB 8: WORKFLOW B — MANUAL / FORM-BASED GENERATOR
 # ==========================================================
-with tab7:
+with tab8:
     st.subheader("🛠️ Custom / Manual Timetable Generator")
     st.caption("Build and customize a timetable schedule using manual overrides, custom rooms, and configurable slots.")
 
